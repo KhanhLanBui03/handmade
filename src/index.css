@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Outfit', 'Inter', sans-serif;
+  
+  --color-paper: #faf9f6;
+  --color-paper-dim: #f3efec;
+  --color-ink: #1a1a1a;
+  --color-sunflower: #ffc82c;
+  --color-hydrangea: #8fa9d4;
+  --color-brick: #c25a46;
+}
+
+@layer base {
+  body {
+    @apply bg-paper text-ink font-sans antialiased selection:bg-sunflower selection:text-ink;
+    margin: 0;
+  }
+}
