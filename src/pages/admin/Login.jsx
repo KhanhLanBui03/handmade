@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { supabase } from '../../lib/supabase';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { LockKey, Envelope, CircleNotch } from '@phosphor-icons/react';
+import { LockKey, Envelope, CircleNotch, Flower, ArrowLeft, WarningCircle } from '@phosphor-icons/react';
+import { supabase } from '../../lib/supabase';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -15,12 +15,7 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       setError(error.message);
       setLoading(false);
@@ -30,67 +25,66 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-paper flex items-center justify-center px-6">
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="max-w-md w-full bg-paper-dim border border-ink/10 rounded-[32px] p-8 md:p-12 shadow-2xl"
-      >
-        <div className="flex justify-center mb-8">
-          <div className="w-16 h-16 bg-ink text-paper rounded-[20px] flex items-center justify-center">
-            <LockKey size={32} weight="bold" />
-          </div>
+    <div className="grid min-h-dvh bg-paper lg:grid-cols-2">
+      {/* Ảnh minh họa */}
+      <div className="relative hidden overflow-hidden lg:block">
+        <img src="/hero_hydrangea.png" alt="" className="absolute inset-0 size-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-t from-ink/80 via-ink/20 to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 p-12 text-white">
+          <p className="max-w-md font-display text-4xl leading-tight">
+            Quản lý cửa hàng hoa <em className="text-blush">nhẹ nhàng</em> như cách bạn uốn từng cánh hoa.
+          </p>
         </div>
-        
-        <h1 className="text-3xl font-semibold text-center tracking-tight mb-2">Đăng nhập Admin</h1>
-        <p className="text-ink/60 text-center mb-8">Quản lý kho hàng và danh mục sản phẩm của bạn.</p>
+      </div>
 
-        {error && (
-          <div className="bg-brick/10 text-brick p-4 rounded-[16px] text-sm mb-6 border border-brick/20">
-            Đăng nhập thất bại: Kiểm tra lại email và mật khẩu.
-          </div>
-        )}
+      {/* Form */}
+      <div className="flex flex-col px-4 py-6 sm:px-8">
+        <Link to="/" className="inline-flex w-fit items-center gap-2 text-sm text-muted hover:text-ink">
+          <ArrowLeft size={16} /> Về cửa hàng
+        </Link>
 
-        <form onSubmit={handleLogin} className="flex flex-col gap-5">
-          <div>
-            <label className="block text-sm font-medium mb-2 text-ink/80">Email</label>
-            <div className="relative">
-              <Envelope className="absolute left-4 top-1/2 -translate-y-1/2 text-ink/40" size={20} />
-              <input 
-                type="email" 
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-paper border border-ink/10 rounded-[16px] py-3 pl-12 pr-4 focus:outline-none focus:border-ink transition-colors"
-                placeholder="admin@example.com"
-                required
-              />
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+          className="m-auto w-full max-w-sm py-12"
+        >
+          <span className="flex size-12 items-center justify-center rounded-full bg-brick text-white">
+            <Flower size={26} weight="fill" />
+          </span>
+          <h1 className="mt-6 text-3xl font-semibold tracking-tight">Đăng nhập quản trị</h1>
+          <p className="mt-2 text-muted">Quản lý sản phẩm, danh mục và hóa đơn bán hàng.</p>
+
+          {error && (
+            <div role="alert" className="mt-6 flex items-start gap-2 rounded-xl border border-brick/20 bg-blush/60 p-3 text-sm text-brick-dark">
+              <WarningCircle size={18} weight="fill" className="mt-0.5 shrink-0" />
+              Đăng nhập thất bại. Vui lòng kiểm tra lại email và mật khẩu.
             </div>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium mb-2 text-ink/80">Mật khẩu</label>
-            <div className="relative">
-              <LockKey className="absolute left-4 top-1/2 -translate-y-1/2 text-ink/40" size={20} />
-              <input 
-                type="password" 
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-paper border border-ink/10 rounded-[16px] py-3 pl-12 pr-4 focus:outline-none focus:border-ink transition-colors"
-                placeholder="••••••••"
-                required
-              />
-            </div>
-          </div>
+          )}
 
-          <button 
-            type="submit" 
-            disabled={loading}
-            className="w-full bg-ink text-paper py-4 rounded-[16px] font-semibold mt-4 hover:-translate-y-1 transition-transform disabled:opacity-50 disabled:hover:translate-y-0 flex justify-center items-center"
-          >
-            {loading ? <CircleNotch size={24} className="animate-spin" /> : 'Đăng nhập'}
-          </button>
-        </form>
-      </motion.div>
+          <form onSubmit={handleLogin} className="mt-8 space-y-5">
+            <div>
+              <label htmlFor="email" className="label">Email</label>
+              <div className="relative">
+                <Envelope size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
+                <input id="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                  placeholder="admin@example.com" required className="input h-12 pl-10" />
+              </div>
+            </div>
+            <div>
+              <label htmlFor="password" className="label">Mật khẩu</label>
+              <div className="relative">
+                <LockKey size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
+                <input id="password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••" required className="input h-12 pl-10" />
+              </div>
+            </div>
+            <button type="submit" disabled={loading} className="btn btn-primary btn-lg w-full rounded-xl">
+              {loading ? <CircleNotch size={20} className="animate-spin" /> : 'Đăng nhập'}
+            </button>
+          </form>
+        </motion.div>
+      </div>
     </div>
   );
 }

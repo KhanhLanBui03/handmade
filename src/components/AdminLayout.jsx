@@ -1,95 +1,156 @@
 import { useEffect, useState } from 'react';
-import { Navigate, Outlet, Link, useLocation } from 'react-router-dom';
+import { Navigate, Outlet, Link, NavLink, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { CircleNotch, Storefront, Package, Folders, SignOut, ChartBar } from '@phosphor-icons/react';
+import {
+  CircleNotch, CashRegister, Receipt, Package, Folders, SignOut, List, X, ArrowSquareOut, Flower,
+} from '@phosphor-icons/react';
+
+const NAV = [
+  { name: 'Bán hàng (POS)', path: '/admin', icon: CashRegister, end: true },
+  { name: 'Hóa đơn', path: '/admin/orders', icon: Receipt },
+  { name: 'Sản phẩm', path: '/admin/products', icon: Package, match: '/admin/product' },
+  { name: 'Danh mục', path: '/admin/categories', icon: Folders },
+];
+
+function Sidebar({ session, onNavigate }) {
+  const { pathname } = useLocation();
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex h-16 items-center gap-2.5 px-5">
+        <span className="flex size-9 items-center justify-center rounded-full bg-brick text-white">
+          <Flower size={20} weight="fill" />
+        </span>
+        <div className="leading-tight">
+          <p className="font-display text-lg font-medium">Trạm Hoa Nhỏ</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">Quản trị</p>
+        </div>
+      </div>
+
+      <nav className="flex-1 space-y-1 px-3 py-4" aria-label="Quản trị">
+        <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.15em] text-muted/80">Menu</p>
+        {NAV.map((item) => {
+          const forceActive = item.match && pathname.startsWith(item.match) && !pathname.startsWith(item.path);
+          return (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              end={item.end}
+              onClick={onNavigate}
+              className={({ isActive }) => {
+                const on = isActive || forceActive;
+                return `group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+                  on ? 'bg-ink text-paper' : 'text-muted hover:bg-ink/5 hover:text-ink'
+                }`;
+              }}
+            >
+              {({ isActive }) => (
+                <>
+                  <item.icon size={20} weight={isActive || forceActive ? 'fill' : 'regular'} />
+                  {item.name}
+                </>
+              )}
+            </NavLink>
+          );
+        })}
+
+        <div className="!mt-6 border-t border-line pt-4">
+          <Link
+            to="/"
+            target="_blank"
+            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted hover:bg-ink/5 hover:text-ink"
+          >
+            <ArrowSquareOut size={20} /> Xem cửa hàng
+          </Link>
+        </div>
+      </nav>
+
+      <div className="border-t border-line p-3">
+        <div className="flex items-center gap-3 rounded-xl px-3 py-2">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-sage-soft text-sm font-semibold uppercase text-sage">
+            {session?.user?.email?.[0] || 'A'}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium">{session?.user?.email}</p>
+            <p className="text-xs text-muted">Quản trị viên</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => supabase.auth.signOut()}
+            className="icon-btn size-9 hover:text-brick"
+            aria-label="Đăng xuất"
+            title="Đăng xuất"
+          >
+            <SignOut size={18} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function AdminLayout() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
-  const location = useLocation();
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoading(false);
     });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
   if (loading) {
     return (
-      <div className="min-h-[100dvh] flex items-center justify-center bg-paper">
-        <CircleNotch size={48} className="animate-spin text-ink/20" />
+      <div className="flex min-h-dvh items-center justify-center bg-paper">
+        <CircleNotch size={36} className="animate-spin text-muted" />
       </div>
     );
   }
 
-  if (!session) {
-    return <Navigate to="/admin/login" replace />;
-  }
-
-  const navItems = [
-    { name: 'POS Bán hàng', path: '/admin', icon: ChartBar },
-    { name: 'Lịch sử Hóa đơn', path: '/admin/orders', icon: Storefront },
-    { name: 'Quản lý Sản phẩm', path: '/admin/products', icon: Package },
-    { name: 'Quản lý Danh mục', path: '/admin/categories', icon: Folders },
-  ];
+  if (!session) return <Navigate to="/admin/login" replace />;
 
   return (
-    <div className="min-h-[100dvh] bg-paper-dim flex">
-      {/* Sidebar Professional */}
-      <aside className="w-72 bg-ink text-paper flex flex-col fixed h-full z-20 shadow-2xl">
-        <div className="p-8 border-b border-paper/10">
-          <Link to="/" className="flex items-center gap-3 text-paper hover:opacity-80 transition-opacity">
-            <Storefront size={32} weight="fill" className="text-sunflower" />
-            <div className="flex flex-col">
-              <span className="font-semibold text-xl tracking-tight leading-tight">Admin Panel</span>
-              <span className="text-xs text-paper/50 uppercase tracking-widest mt-0.5">Kẽm Nhung</span>
-            </div>
-          </Link>
-        </div>
-        
-        <nav className="flex-1 px-4 py-8 flex flex-col gap-3">
-          {navItems.map(item => {
-            const isActive = location.pathname === item.path || (item.path !== '/admin' && location.pathname.startsWith(item.path));
-            return (
-              <Link 
-                key={item.path} 
-                to={item.path}
-                className={`flex items-center gap-4 px-5 py-4 rounded-2xl transition-all ${
-                  isActive 
-                    ? 'bg-sunflower text-ink font-semibold shadow-lg shadow-sunflower/20 scale-100' 
-                    : 'text-paper/60 hover:text-paper hover:bg-paper/5 scale-95 hover:scale-100 font-medium'
-                }`}
-              >
-                <item.icon size={24} weight={isActive ? "fill" : "regular"} />
-                {item.name}
-              </Link>
-            )
-          })}
-        </nav>
-
-        <div className="p-6 border-t border-paper/10">
-          <button 
-            onClick={() => supabase.auth.signOut()}
-            className="flex items-center gap-4 px-5 py-4 w-full text-left text-paper/60 hover:text-brick hover:bg-brick/10 rounded-2xl transition-colors font-medium"
-          >
-            <SignOut size={24} />
-            Đăng xuất
-          </button>
-        </div>
+    <div className="min-h-dvh bg-paper">
+      {/* Sidebar desktop */}
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-line bg-surface lg:block">
+        <Sidebar session={session} />
       </aside>
 
-      {/* Main Content Area */}
-      <main className="flex-1 ml-72 p-10 md:p-14 min-h-screen">
-        <div className="max-w-6xl mx-auto">
+      {/* Topbar mobile */}
+      <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-line bg-surface/90 px-4 backdrop-blur lg:hidden">
+        <button type="button" className="icon-btn text-ink" aria-label="Mở menu" onClick={() => setDrawerOpen(true)}>
+          <List size={22} />
+        </button>
+        <p className="font-display text-lg">Trạm Hoa Nhỏ</p>
+        <span className="size-10" />
+      </header>
+
+      {/* Drawer mobile */}
+      {drawerOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-ink/40" onClick={() => setDrawerOpen(false)} />
+          <aside className="absolute inset-y-0 left-0 w-72 max-w-[85vw] bg-surface shadow-xl">
+            <button
+              type="button"
+              className="icon-btn absolute right-3 top-3"
+              aria-label="Đóng menu"
+              onClick={() => setDrawerOpen(false)}
+            >
+              <X size={20} />
+            </button>
+            <Sidebar session={session} onNavigate={() => setDrawerOpen(false)} />
+          </aside>
+        </div>
+      )}
+
+      <main className="lg:pl-64">
+        <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
           <Outlet context={{ session }} />
         </div>
       </main>

@@ -1,19 +1,132 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: 'Outfit', 'Inter', sans-serif;
-  
-  --color-paper: #faf9f6;
-  --color-paper-dim: #f3efec;
-  --color-ink: #1a1a1a;
-  --color-sunflower: #ffc82c;
+  --font-sans: 'Be Vietnam Pro', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Fraunces', ui-serif, Georgia, serif;
+
+  /* Nền & bề mặt */
+  --color-paper: #fbf7f1;
+  --color-paper-dim: #f3ece2;
+  --color-surface: #ffffff;
+  --color-line: #e8dfd3;
+
+  /* Chữ */
+  --color-ink: #241e19;
+  --color-muted: #6e645a;
+
+  /* Màu nhấn */
+  --color-brick: #b4523a;
+  --color-brick-dark: #93412d;
+  --color-blush: #f5e2d8;
+  --color-sage: #66775a;
+  --color-sage-soft: #e5eadc;
+  --color-sunflower: #efb02e;
   --color-hydrangea: #8fa9d4;
-  --color-brick: #c25a46;
+
+  --ease-out-soft: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --animate-marquee: marquee 40s linear infinite;
+  --animate-float: float 6s ease-in-out infinite;
+
+  @keyframes marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
 }
 
 @layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
   body {
-    @apply bg-paper text-ink font-sans antialiased selection:bg-sunflower selection:text-ink;
+    @apply bg-paper text-ink font-sans antialiased;
     margin: 0;
+  }
+  ::selection {
+    @apply bg-blush text-ink;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-brick);
+    outline-offset: 2px;
+  }
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    appearance: none;
+    margin: 0;
+  }
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+}
+
+@layer components {
+  .font-display {
+    font-optical-sizing: auto;
+  }
+
+  .eyebrow {
+    @apply text-xs font-semibold uppercase tracking-[0.18em] text-brick;
+  }
+
+  /* Nút bấm */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-5 h-11 text-sm font-semibold whitespace-nowrap
+      transition-[background-color,color,border-color,transform] duration-200
+      disabled:opacity-50 disabled:pointer-events-none active:scale-[0.98];
+  }
+  .btn-lg {
+    @apply h-13 px-7 text-base;
+  }
+  .btn-sm {
+    @apply h-9 px-4 text-sm;
+  }
+  .btn-primary {
+    @apply bg-ink text-paper hover:bg-ink/85;
+  }
+  .btn-accent {
+    @apply bg-brick text-white hover:bg-brick-dark;
+  }
+  .btn-outline {
+    @apply border border-ink/15 bg-surface text-ink hover:border-ink/40;
+  }
+  .btn-ghost {
+    @apply text-ink hover:bg-ink/5;
+  }
+  .icon-btn {
+    @apply inline-flex items-center justify-center size-10 rounded-full text-muted
+      transition-colors hover:bg-ink/5 hover:text-ink;
+  }
+
+  /* Form */
+  .label {
+    @apply block text-sm font-medium text-ink mb-1.5;
+  }
+  .input {
+    @apply w-full h-11 rounded-xl border border-line bg-surface px-4 text-sm text-ink placeholder:text-muted/70
+      transition-[border-color,box-shadow] outline-none
+      focus:border-brick focus:ring-4 focus:ring-brick/10;
+  }
+  textarea.input {
+    @apply h-auto py-3 leading-relaxed;
+  }
+
+  /* Admin */
+  .card {
+    @apply rounded-2xl border border-line bg-surface;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium;
+  }
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
   }
 }

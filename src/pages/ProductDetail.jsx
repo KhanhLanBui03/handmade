@@ -1,188 +1,241 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { motion } from 'motion/react';
-import { ArrowLeft, PlayCircle, CircleNotch } from '@phosphor-icons/react';
+import { AnimatePresence, motion } from 'motion/react';
+import {
+  CaretLeft, CaretRight, CaretRight as Chevron, Phone, ChatCircleDots,
+  CheckCircle, HandHeart, Sparkle, Gift, PlayCircle, Flower,
+} from '@phosphor-icons/react';
 import { supabase } from '../lib/supabase';
+import { CONTACT, formatVND, parsePrice } from '../lib/format';
+import { ProductCard } from '../components/ProductCard';
+
+function DetailSkeleton() {
+  return (
+    <div className="mx-auto grid max-w-7xl gap-10 px-4 pt-8 sm:px-6 lg:grid-cols-2 lg:px-10" aria-busy="true">
+      <div className="aspect-square rounded-3xl bg-paper-dim animate-pulse" />
+      <div className="space-y-4 pt-4">
+        <div className="h-4 w-24 rounded bg-paper-dim animate-pulse" />
+        <div className="h-12 w-3/4 rounded bg-paper-dim animate-pulse" />
+        <div className="h-8 w-40 rounded bg-paper-dim animate-pulse" />
+        <div className="h-32 w-full rounded bg-paper-dim animate-pulse" />
+      </div>
+    </div>
+  );
+}
 
 export default function ProductDetail() {
   const { id } = useParams();
   const [product, setProduct] = useState(null);
+  const [related, setRelated] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeImageIdx, setActiveImageIdx] = useState(0);
+  const [active, setActive] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
     async function fetchProduct() {
-      const { data } = await supabase
-        .from('products')
-        .select('*, categories(name)')
-        .eq('id', id)
-        .single();
-        
-      if (data) setProduct(data);
+      setLoading(true);
+      setActive(0);
+      const { data } = await supabase.from('products').select('*, categories(name)').eq('id', id).single();
+      if (cancelled) return;
+      setProduct(data || null);
       setLoading(false);
+
+      if (data) {
+        let q = supabase.from('products').select('*, categories(name)').neq('id', id).limit(4);
+        if (data.category_id) q = q.eq('category_id', data.category_id);
+        const { data: rel } = await q.order('created_at', { ascending: false });
+        if (!cancelled) setRelated(rel || []);
+      }
     }
     fetchProduct();
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
-  if (loading) {
-    return (
-      <div className="min-h-[calc(100dvh-72px)] flex items-center justify-center bg-paper">
-        <CircleNotch size={48} className="animate-spin text-ink/20" />
-      </div>
-    );
-  }
+  if (loading) return <DetailSkeleton />;
 
   if (!product) {
     return (
-      <div className="min-h-[calc(100dvh-72px)] flex flex-col items-center justify-center bg-paper gap-4">
-        <h2 className="text-3xl font-semibold">Sản phẩm không tồn tại</h2>
-        <Link to="/products" className="text-brick hover:underline">Quay lại cửa hàng</Link>
+      <div className="mx-auto flex max-w-xl flex-col items-center px-4 py-32 text-center">
+        <span className="flex size-16 items-center justify-center rounded-full bg-blush text-brick">
+          <Flower size={30} weight="duotone" />
+        </span>
+        <h1 className="mt-5 font-display text-3xl">Sản phẩm không tồn tại</h1>
+        <p className="mt-2 text-muted">Có thể sản phẩm đã ngừng bán hoặc đường dẫn chưa đúng.</p>
+        <Link to="/products" className="btn btn-primary mt-6">Quay lại cửa hàng</Link>
       </div>
     );
   }
 
-  const images = (product.media || []).filter(m => m.type === 'image');
-  const videos = (product.media || []).filter(m => m.type === 'video');
-  const price = Number(String(product.price).replace(/[^\d]/g, '')) || 0;
+  const images = (product.media || []).filter((m) => m.type !== 'video');
+  const videos = (product.media || []).filter((m) => m.type === 'video');
+  const price = parsePrice(product.price);
+  const category = product.categories?.name;
+  const go = (dir) => setActive((i) => (i + dir + images.length) % images.length);
 
   return (
-    <div className="bg-paper text-ink min-h-[calc(100dvh-72px)] pb-32">
-      
-      {/* Top Nav / Breadcrumb */}
-      <div className="px-6 md:px-12 py-8 max-w-[1200px] mx-auto">
-        <Link to="/products" className="inline-flex items-center gap-2 text-ink/50 hover:text-ink transition-colors font-medium text-sm">
-          <ArrowLeft weight="bold" /> Trở lại cửa hàng
-        </Link>
-      </div>
+    <div>
+      {/* Breadcrumb */}
+      <nav aria-label="Breadcrumb" className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-10">
+        <ol className="flex flex-wrap items-center gap-1.5 text-sm text-muted">
+          <li><Link to="/" className="hover:text-ink">Trang chủ</Link></li>
+          <li aria-hidden="true"><Chevron size={12} /></li>
+          <li><Link to="/products" className="hover:text-ink">Cửa hàng</Link></li>
+          {category && (
+            <>
+              <li aria-hidden="true"><Chevron size={12} /></li>
+              <li>
+                <Link to={`/products?category=${encodeURIComponent(category)}`} className="hover:text-ink">{category}</Link>
+              </li>
+            </>
+          )}
+          <li aria-hidden="true"><Chevron size={12} /></li>
+          <li className="truncate text-ink" aria-current="page">{product.name}</li>
+        </ol>
+      </nav>
 
-      <div className="px-6 md:px-12 max-w-[1200px] mx-auto">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-start">
-          
-          {/* Media Gallery */}
-          <div className="lg:col-span-5 flex flex-col">
-            
-            {/* Main Image */}
-            {images.length > 0 && (
-              <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-                className="w-full rounded-[24px] overflow-hidden bg-paper-dim mb-4 aspect-square relative border border-ink/5"
-              >
-                <img 
-                  src={images[activeImageIdx].src} 
-                  alt={product.name} 
-                  className="w-full h-full object-cover" 
-                />
-              </motion.div>
-            )}
-
-            {/* Thumbnails */}
+      <div className="mx-auto grid max-w-7xl gap-10 px-4 sm:px-6 lg:grid-cols-12 lg:gap-14 lg:px-10">
+        {/* Thư viện ảnh */}
+        <div className="lg:col-span-7">
+          <div className="flex flex-col-reverse gap-3 md:flex-row">
             {images.length > 1 && (
-              <div className="flex gap-3 overflow-x-auto pb-4" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+              <div className="no-scrollbar flex gap-3 overflow-x-auto md:max-h-[640px] md:flex-col md:overflow-y-auto">
                 {images.map((img, idx) => (
-                  <button 
+                  <button
                     key={idx}
-                    onClick={() => setActiveImageIdx(idx)}
-                    className={`relative w-20 h-20 rounded-[16px] overflow-hidden flex-shrink-0 transition-all ${
-                      activeImageIdx === idx 
-                        ? 'border-[3px] border-ink opacity-100 scale-100 shadow-md' 
-                        : 'border-2 border-transparent opacity-50 hover:opacity-100 scale-95 hover:scale-100'
+                    type="button"
+                    onClick={() => setActive(idx)}
+                    aria-label={`Xem ảnh ${idx + 1}`}
+                    aria-current={active === idx}
+                    className={`size-18 shrink-0 overflow-hidden rounded-xl transition md:size-20 ${
+                      active === idx ? 'ring-2 ring-ink ring-offset-2 ring-offset-paper' : 'opacity-60 hover:opacity-100'
                     }`}
                   >
-                    <img src={img.src} alt={`Thumbnail ${idx + 1}`} className="w-full h-full object-cover" />
+                    <img src={img.src} alt="" className="size-full object-cover" />
                   </button>
                 ))}
               </div>
             )}
 
-          </div>
-
-          {/* Product Info */}
-          <div className="lg:col-span-6 lg:col-start-7 relative">
-            <div className="lg:sticky lg:top-32 flex flex-col items-start pt-4 lg:pt-0">
-              
-              <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.5 }}
-                className="text-[11px] font-semibold uppercase tracking-[0.2em] text-ink/40 mb-6"
-              >
-                {product.categories?.name || 'Chưa phân loại'}
-              </motion.div>
-
-              <motion.h1 
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-                className="text-4xl md:text-5xl lg:text-5xl font-medium tracking-tighter leading-[1.1] mb-6"
-              >
-                {product.name}
-              </motion.h1>
-              
-              <motion.div 
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
-                className="text-4xl md:text-5xl text-brick font-semibold tracking-tight mb-12"
-              >
-                {price.toLocaleString('vi-VN')} đ
-              </motion.div>
-
-              <motion.div 
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
-                className="w-full divide-y divide-ink/10 border-t border-ink/10"
-              >
-                <div className="py-8">
-                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.2em] text-ink/40 mb-5">Mô tả</h3>
-                  <p className="text-lg text-ink/80 leading-relaxed max-w-[45ch] whitespace-pre-wrap">
-                    {product.description || 'Chưa có mô tả cho sản phẩm này.'}
-                  </p>
+            <div className="relative aspect-square flex-1 overflow-hidden rounded-3xl bg-paper-dim">
+              {images.length > 0 ? (
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.img
+                    key={images[active]?.src}
+                    src={images[active]?.src}
+                    alt={product.name}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.25 }}
+                    className="size-full object-cover"
+                  />
+                </AnimatePresence>
+              ) : (
+                <div className="flex size-full items-center justify-center text-ink/15">
+                  <Flower size={80} weight="duotone" />
                 </div>
+              )}
 
-                {product.features && product.features.length > 0 && (
-                  <div className="py-8">
-                    <h3 className="text-[11px] font-semibold uppercase tracking-[0.2em] text-ink/40 mb-5">Chi tiết cấu tạo</h3>
-                    <ul className="grid grid-cols-1 gap-y-4">
-                      {product.features.map((feature, i) => (
-                        <li key={i} className="flex items-start gap-4 text-ink/80">
-                          <div className="w-1.5 h-1.5 rounded-full bg-ink mt-2.5 flex-shrink-0"></div>
-                          <span className="leading-relaxed text-base">{feature}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </motion.div>
-              
+              {images.length > 1 && (
+                <>
+                  <button type="button" onClick={() => go(-1)} aria-label="Ảnh trước"
+                    className="absolute left-3 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full bg-surface/90 text-ink backdrop-blur transition hover:bg-surface">
+                    <CaretLeft size={18} weight="bold" />
+                  </button>
+                  <button type="button" onClick={() => go(1)} aria-label="Ảnh tiếp theo"
+                    className="absolute right-3 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full bg-surface/90 text-ink backdrop-blur transition hover:bg-surface">
+                    <CaretRight size={18} weight="bold" />
+                  </button>
+                  <span className="absolute bottom-3 right-3 rounded-full bg-ink/70 px-3 py-1 text-xs font-medium text-white">
+                    {active + 1} / {images.length}
+                  </span>
+                </>
+              )}
             </div>
           </div>
-
         </div>
 
-        {/* Video Section (Full Width) */}
-        {videos.length > 0 && (
-          <div className="mt-20 pt-16 border-t border-ink/10">
-            <h3 className="text-2xl font-semibold mb-8 flex items-center justify-center gap-3">
-              <PlayCircle size={32} className="text-brick" weight="fill" /> Video Thực Tế
-            </h3>
-            <div className="max-w-4xl mx-auto flex flex-col gap-12">
-              {videos.map((vid, idx) => (
-                <div key={idx} className="w-full bg-ink/5 rounded-[32px] flex justify-center border border-ink/5 shadow-inner">
-                  <video 
-                    src={vid.src} 
-                    controls 
-                    className="w-full max-h-[75vh] object-contain rounded-[32px]"
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Thông tin */}
+        <div className="lg:col-span-5">
+          <div className="lg:sticky lg:top-24">
+            {category && <p className="eyebrow">{category}</p>}
+            <h1 className="mt-3 font-display text-4xl leading-[1.1] tracking-tight sm:text-5xl">{product.name}</h1>
+            <p className="mt-5 text-3xl font-semibold text-brick">{formatVND(price)}</p>
 
+            <p className="mt-6 whitespace-pre-wrap leading-relaxed text-muted">
+              {product.description || 'Chưa có mô tả cho sản phẩm này.'}
+            </p>
+
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <a href={`tel:${CONTACT.phone}`} className="btn btn-accent btn-lg flex-1">
+                <Phone weight="bold" /> Gọi đặt hàng
+              </a>
+              <a href={CONTACT.zalo} target="_blank" rel="noreferrer" className="btn btn-outline btn-lg flex-1">
+                <ChatCircleDots weight="bold" /> Nhắn Zalo
+              </a>
+            </div>
+            <p className="mt-3 text-center text-sm text-muted sm:text-left">
+              Hotline: <a href={`tel:${CONTACT.phone}`} className="font-medium text-ink hover:text-brick">{CONTACT.phoneDisplay}</a>
+            </p>
+
+            {product.features?.length > 0 && (
+              <div className="mt-10 border-t border-line pt-8">
+                <h2 className="text-sm font-semibold uppercase tracking-[0.15em] text-ink">Chi tiết cấu tạo</h2>
+                <ul className="mt-4 space-y-3">
+                  {product.features.map((f, i) => (
+                    <li key={i} className="flex items-start gap-3 text-muted">
+                      <CheckCircle size={20} weight="fill" className="mt-0.5 shrink-0 text-sage" />
+                      <span className="leading-relaxed">{f}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <ul className="mt-10 grid grid-cols-3 gap-3 border-t border-line pt-8 text-center text-xs text-muted">
+              {[
+                [HandHeart, 'Làm thủ công'],
+                [Sparkle, 'Bền màu, không héo'],
+                [Gift, 'Nhận làm theo yêu cầu'],
+              ].map(([Icon, label]) => (
+                <li key={label} className="flex flex-col items-center gap-2 rounded-2xl bg-paper-dim px-2 py-4">
+                  <Icon size={22} weight="duotone" className="text-brick" />
+                  {label}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
       </div>
+
+      {/* Video */}
+      {videos.length > 0 && (
+        <section className="mx-auto mt-20 max-w-5xl px-4 sm:px-6 lg:px-10">
+          <h2 className="flex items-center gap-3 font-display text-3xl tracking-tight">
+            <PlayCircle size={32} weight="duotone" className="text-brick" /> Video thực tế
+          </h2>
+          <div className="mt-6 space-y-6">
+            {videos.map((v, i) => (
+              <video key={i} src={v.src} controls playsInline className="max-h-[75vh] w-full rounded-3xl bg-ink object-contain" />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Sản phẩm liên quan */}
+      {related.length > 0 && (
+        <section className="mx-auto mt-24 max-w-7xl px-4 sm:px-6 lg:px-10">
+          <div className="mb-8 flex items-end justify-between gap-4">
+            <h2 className="font-display text-3xl tracking-tight sm:text-4xl">Có thể bạn cũng thích</h2>
+            <Link to="/products" className="shrink-0 font-medium hover:text-brick">Xem thêm</Link>
+          </div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-8 lg:grid-cols-4 lg:gap-x-6">
+            {related.map((p) => <ProductCard key={p.id} product={p} />)}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

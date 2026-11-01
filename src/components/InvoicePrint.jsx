@@ -1,5 +1,5 @@
 import React from 'react';
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns';
 
 export const InvoicePrint = React.forwardRef(({ order }, ref) => {
   if (!order) return <div ref={ref}></div>;
@@ -8,7 +8,7 @@ export const InvoicePrint = React.forwardRef(({ order }, ref) => {
     <div ref={ref} className="p-10 text-black bg-white" style={{ fontFamily: 'Arial, sans-serif' }}>
       <div className="text-center mb-8 border-b-2 border-black pb-4">
         <h1 className="text-3xl font-bold uppercase mb-2 tracking-widest">HÓA ĐƠN MUA HÀNG</h1>
-        <p className="text-lg text-gray-700 font-medium">Cửa hàng Kẽm Nhung Handmade</p>
+        <p className="text-lg text-gray-700 font-medium">Trạm Hoa Nhỏ — Hoa kẽm nhung handmade</p>
         <p className="text-sm text-gray-500 mt-2">Ngày in: {format(new Date(), 'dd/MM/yyyy HH:mm')}</p>
         <p className="text-sm text-gray-500">Mã đơn: #{order.id.split('-')[0].toUpperCase()}</p>
       </div>

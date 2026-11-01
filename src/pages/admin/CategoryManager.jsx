@@ -1,138 +1,152 @@
 import { useState, useEffect } from 'react';
+import { Plus, Trash, PencilSimple, Check, X, Folders } from '@phosphor-icons/react';
 import { supabase } from '../../lib/supabase';
-import { Plus, Trash, PencilSimple, Check, X } from '@phosphor-icons/react';
+import { PageHeader, Spinner, EmptyState } from '../../components/admin/ui';
 
 export default function CategoryManager() {
   const [categories, setCategories] = useState([]);
+  const [counts, setCounts] = useState({});
   const [newCategoryName, setNewCategoryName] = useState('');
   const [loading, setLoading] = useState(true);
-  
+  const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState('');
 
   useEffect(() => {
-    fetchCategories();
+    async function fetchData() {
+      const [catRes, prodRes] = await Promise.all([
+        supabase.from('categories').select('*').order('created_at', { ascending: true }),
+        supabase.from('products').select('category_id'),
+      ]);
+      if (catRes.data) setCategories(catRes.data);
+      if (prodRes.data) {
+        const c = {};
+        prodRes.data.forEach((p) => {
+          if (p.category_id) c[p.category_id] = (c[p.category_id] || 0) + 1;
+        });
+        setCounts(c);
+      }
+      setLoading(false);
+    }
+    fetchData();
   }, []);
 
-  const fetchCategories = async () => {
-    setLoading(true);
-    const { data } = await supabase.from('categories').select('*').order('created_at', { ascending: true });
-    if (data) setCategories(data);
-    setLoading(false);
-  };
-
-  const handleAddCategory = async (e) => {
+  const handleAdd = async (e) => {
     e.preventDefault();
-    if (!newCategoryName.trim()) return;
-    
-    const { data, error } = await supabase
-      .from('categories')
-      .insert([{ name: newCategoryName }])
-      .select();
-      
-    if (!error && data) {
-      setCategories([...categories, data[0]]);
+    const name = newCategoryName.trim();
+    if (!name) return;
+    setAdding(true);
+    const { data, error } = await supabase.from('categories').insert([{ name }]).select();
+    setAdding(false);
+    if (error) return alert('Không thêm được: ' + error.message);
+    if (data) {
+      setCategories((list) => [...list, data[0]]);
       setNewCategoryName('');
     }
   };
 
-  const handleDeleteCategory = async (id) => {
-    if (!confirm('Lưu ý: Xóa danh mục này sẽ khiến các sản phẩm thuộc danh mục này bị mất danh mục. Bạn có chắc chắn không?')) return;
-    await supabase.from('categories').delete().eq('id', id);
-    setCategories(categories.filter(c => c.id !== id));
+  const handleDelete = async (cat) => {
+    const n = counts[cat.id] || 0;
+    const warn = n > 0 ? `\n${n} sản phẩm thuộc danh mục này sẽ trở thành "Chưa phân loại".` : '';
+    if (!confirm(`Xóa danh mục "${cat.name}"?${warn}`)) return;
+    const { error } = await supabase.from('categories').delete().eq('id', cat.id);
+    if (error) return alert('Không xóa được: ' + error.message);
+    setCategories((list) => list.filter((c) => c.id !== cat.id));
   };
 
-  const handleEditClick = (cat) => {
+  const startEdit = (cat) => {
     setEditingId(cat.id);
     setEditName(cat.name);
   };
 
-  const handleSaveEdit = async (id) => {
-    if (!editName.trim()) return;
-    await supabase.from('categories').update({ name: editName }).eq('id', id);
-    setCategories(categories.map(c => c.id === id ? { ...c, name: editName } : c));
+  const saveEdit = async (id) => {
+    const name = editName.trim();
+    if (!name) return;
+    const { error } = await supabase.from('categories').update({ name }).eq('id', id);
+    if (error) return alert('Không lưu được: ' + error.message);
+    setCategories((list) => list.map((c) => (c.id === id ? { ...c, name } : c)));
     setEditingId(null);
   };
 
   return (
     <div>
-      <h2 className="text-4xl font-semibold mb-10 tracking-tight">Quản lý Danh mục</h2>
+      <PageHeader title="Danh mục" description="Nhóm sản phẩm để khách dễ lọc trên cửa hàng." />
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        
-        {/* Form thêm mới */}
-        <div className="lg:col-span-4">
-          <div className="bg-paper rounded-[32px] p-8 border border-ink/5 shadow-sm sticky top-10">
-            <h3 className="text-xl font-semibold mb-6">Thêm danh mục mới</h3>
-            <form onSubmit={handleAddCategory} className="flex flex-col gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-2 text-ink/70">Tên danh mục</label>
-                <input 
-                  type="text" 
-                  value={newCategoryName}
-                  onChange={(e) => setNewCategoryName(e.target.value)}
-                  placeholder="Vd: Hoa hướng dương..." 
-                  className="w-full bg-paper-dim border border-ink/10 rounded-2xl px-5 py-4 focus:outline-none focus:border-ink transition-colors"
-                />
-              </div>
-              <button type="submit" className="w-full bg-ink text-paper px-6 py-4 rounded-2xl font-semibold flex items-center justify-center gap-2 hover:-translate-y-1 transition-transform">
-                <Plus weight="bold" size={20} /> Tạo danh mục
-              </button>
-            </form>
+      <div className="grid items-start gap-6 lg:grid-cols-3">
+        <form onSubmit={handleAdd} className="card p-5 sm:p-6 lg:sticky lg:top-6">
+          <h2 className="font-semibold">Thêm danh mục</h2>
+          <label htmlFor="new-cat" className="label mt-5">Tên danh mục</label>
+          <input
+            id="new-cat"
+            type="text"
+            value={newCategoryName}
+            onChange={(e) => setNewCategoryName(e.target.value)}
+            placeholder="VD: Hoa hướng dương"
+            className="input"
+          />
+          <button type="submit" disabled={adding || !newCategoryName.trim()} className="btn btn-primary mt-4 w-full rounded-xl">
+            <Plus weight="bold" /> Tạo danh mục
+          </button>
+        </form>
+
+        <section className="card overflow-hidden lg:col-span-2">
+          <div className="flex items-center justify-between border-b border-line px-5 py-4">
+            <h2 className="font-semibold">Tất cả danh mục</h2>
+            <span className="badge bg-paper-dim text-muted">{categories.length}</span>
           </div>
-        </div>
 
-        {/* Danh sách */}
-        <div className="lg:col-span-8">
-          <div className="bg-paper rounded-[32px] p-8 border border-ink/5 shadow-sm">
-            <h3 className="text-xl font-semibold mb-6">Danh sách Danh mục</h3>
-            
-            {loading ? (
-              <div className="text-ink/50 py-8">Đang tải...</div>
-            ) : (
-              <div className="divide-y divide-ink/5">
-                {categories.map((cat, index) => (
-                  <div key={cat.id} className="flex justify-between items-center py-5 group hover:bg-ink/[0.02] px-4 -mx-4 rounded-2xl transition-colors">
-                    <div className="flex items-center gap-4 w-full">
-                      <div className="w-10 h-10 rounded-full bg-sunflower/20 text-sunflower font-bold flex items-center justify-center flex-shrink-0">
-                        {index + 1}
-                      </div>
-                      
-                      {editingId === cat.id ? (
-                        <div className="flex-1 flex gap-2 mr-4">
-                          <input 
-                            type="text" 
-                            value={editName}
-                            onChange={(e) => setEditName(e.target.value)}
-                            className="flex-1 bg-paper-dim border border-ink/20 rounded-xl px-4 py-2 focus:outline-none focus:border-ink"
-                            autoFocus
-                          />
-                          <button onClick={() => handleSaveEdit(cat.id)} className="bg-ink text-paper p-2 rounded-xl hover:bg-ink/80"><Check size={20} /></button>
-                          <button onClick={() => setEditingId(null)} className="bg-brick/10 text-brick p-2 rounded-xl hover:bg-brick/20"><X size={20} /></button>
-                        </div>
-                      ) : (
-                        <span className="font-medium text-lg flex-1">{cat.name}</span>
-                      )}
+          {loading ? (
+            <Spinner />
+          ) : categories.length === 0 ? (
+            <EmptyState icon={Folders} title="Chưa có danh mục nào" text="Tạo danh mục đầu tiên ở khung bên cạnh." />
+          ) : (
+            <ul className="divide-y divide-line">
+              {categories.map((cat) => (
+                <li key={cat.id} className="flex items-center gap-3 px-5 py-3">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-blush text-brick">
+                    <Folders size={18} weight="duotone" />
+                  </span>
+
+                  {editingId === cat.id ? (
+                    <div className="flex flex-1 gap-2">
+                      <input
+                        type="text"
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') { e.preventDefault(); saveEdit(cat.id); }
+                          if (e.key === 'Escape') setEditingId(null);
+                        }}
+                        aria-label="Tên danh mục"
+                        className="input h-10"
+                        autoFocus
+                      />
+                      <button type="button" onClick={() => saveEdit(cat.id)} className="icon-btn bg-ink text-paper hover:bg-ink/85 hover:text-paper" aria-label="Lưu">
+                        <Check size={18} weight="bold" />
+                      </button>
+                      <button type="button" onClick={() => setEditingId(null)} className="icon-btn" aria-label="Hủy">
+                        <X size={18} />
+                      </button>
                     </div>
-                    
-                    {editingId !== cat.id && (
-                      <div className="flex gap-2">
-                        <button onClick={() => handleEditClick(cat)} className="text-ink/40 p-3 hover:bg-ink/5 hover:text-ink rounded-2xl transition-colors">
-                          <PencilSimple size={22} />
-                        </button>
-                        <button onClick={() => handleDeleteCategory(cat.id)} className="text-brick/50 p-3 hover:bg-brick/10 hover:text-brick rounded-2xl transition-colors">
-                          <Trash size={22} />
-                        </button>
+                  ) : (
+                    <>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium">{cat.name}</p>
+                        <p className="text-xs text-muted">{counts[cat.id] || 0} sản phẩm</p>
                       </div>
-                    )}
-                  </div>
-                ))}
-                {categories.length === 0 && <p className="text-ink/50 py-4">Chưa có danh mục nào.</p>}
-              </div>
-            )}
-          </div>
-        </div>
-
+                      <button type="button" onClick={() => startEdit(cat)} className="icon-btn" aria-label={`Đổi tên ${cat.name}`}>
+                        <PencilSimple size={18} />
+                      </button>
+                      <button type="button" onClick={() => handleDelete(cat)} className="icon-btn hover:bg-brick/10 hover:text-brick" aria-label={`Xóa ${cat.name}`}>
+                        <Trash size={18} />
+                      </button>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </div>
     </div>
   );
