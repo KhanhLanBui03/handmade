@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 import { Navigate, Outlet, Link, NavLink, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import {
-  CircleNotch, CashRegister, Receipt, Package, Folders, SignOut, List, X, ArrowSquareOut, Flower,
+  CircleNotch, CashRegister, Receipt, Package, Folders, SignOut, List, X, ArrowSquareOut, Flower, TrayArrowDown, Shapes,
 } from '@phosphor-icons/react';
 
 const NAV = [
   { name: 'Bán hàng (POS)', path: '/admin', icon: CashRegister, end: true },
   { name: 'Hóa đơn', path: '/admin/orders', icon: Receipt },
+  { name: 'Nhập hàng', path: '/admin/imports', icon: TrayArrowDown },
+  { name: 'Nguyên liệu', path: '/admin/materials', icon: Shapes },
   { name: 'Sản phẩm', path: '/admin/products', icon: Package, match: '/admin/product' },
   { name: 'Danh mục', path: '/admin/categories', icon: Folders },
 ];

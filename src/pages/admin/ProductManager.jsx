@@ -113,7 +113,7 @@ export default function ProductManager() {
                     <td className="px-5 py-3 text-right font-semibold">{formatVND(parsePrice(p.price))}</td>
                     <td className="px-5 py-3">
                       <div className="flex justify-end gap-1">
-                        <Link to={`/product/${p.id}`} target="_blank" className="icon-btn" aria-label={`Xem ${p.name} trên cửa hàng`} title="Xem trên cửa hàng">
+                        <Link to={`/?sp=${p.id}`} target="_blank" className="icon-btn" aria-label={`Xem ${p.name} trên cửa hàng`} title="Xem trên cửa hàng">
                           <ArrowSquareOut size={18} />
                         </Link>
                         <Link to={`/admin/product/edit/${p.id}`} className="icon-btn" aria-label={`Sửa ${p.name}`} title="Sửa">

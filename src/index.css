@@ -42,6 +42,11 @@
   html {
     -webkit-tap-highlight-color: transparent;
   }
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
   body {
     @apply bg-paper text-ink font-sans antialiased;
     margin: 0;

@@ -23,6 +23,16 @@ export function getCover(product) {
   return media.find((m) => m.type !== 'video')?.src || null;
 }
 
+// Bỏ dấu để tìm "cam tu cau" vẫn ra "Cẩm tú cầu"
+export function normalizeText(s) {
+  return String(s || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/đ/gi, 'd')
+    .toLowerCase()
+    .trim();
+}
+
 export function shortId(id) {
   return String(id || '').split('-')[0].toUpperCase();
 }
