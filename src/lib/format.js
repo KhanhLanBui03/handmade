@@ -1,10 +1,13 @@
 // Tiện ích dùng chung cho storefront & admin
 
 export const CONTACT = {
+  zalo: 'https://zalo.me/0399176095',
+  zaloDisplay: '0399 176 095',
+  threads: 'https://www.threads.net/@nhiinhii_095',
+  threadsDisplay: '@nhiinhii_095',
+  email: 'vonguyetnhi3012@gmail.com',
   phone: '0399176095',
   phoneDisplay: '0399 176 095',
-  email: 'vonguyetnhi3012@gmail.com',
-  zalo: 'https://zalo.me/0399176095',
 };
 
 // "150.000đ" -> 150000 (giá đang lưu dạng chuỗi trong DB)

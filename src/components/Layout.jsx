@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
-import { List, X, Phone, Flower } from '@phosphor-icons/react';
+import { List, X, Flower, ChatCircleDots, At } from '@phosphor-icons/react';
 import { CONTACT } from '../lib/format';
 
 // Các phần của trang chủ
@@ -104,8 +104,11 @@ export default function Layout() {
           </nav>
 
           <div className="flex items-center gap-2">
-            <a href={`tel:${CONTACT.phone}`} className="btn btn-primary btn-sm hidden sm:inline-flex">
-              <Phone size={16} weight="bold" /> Đặt hoa
+            <a href={CONTACT.zalo} target="_blank" rel="noreferrer" className="btn btn-primary btn-sm hidden sm:inline-flex">
+              <ChatCircleDots size={16} weight="bold" /> Nhắn Zalo
+            </a>
+            <a href={CONTACT.threads} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm hidden sm:inline-flex text-ink">
+              <At size={16} weight="bold" /> Threads
             </a>
             <button
               type="button"
@@ -141,8 +144,11 @@ export default function Layout() {
                     {s.label}
                   </SectionLink>
                 ))}
-                <a href={`tel:${CONTACT.phone}`} className="btn btn-primary mt-2">
-                  <Phone size={16} weight="bold" /> Gọi đặt hoa · {CONTACT.phoneDisplay}
+                <a href={CONTACT.zalo} target="_blank" rel="noreferrer" className="btn btn-primary mt-2">
+                  <ChatCircleDots size={16} weight="bold" /> Nhắn Zalo đặt hoa
+                </a>
+                <a href={CONTACT.threads} target="_blank" rel="noreferrer" className="btn btn-outline">
+                  <At size={16} weight="bold" /> Nhắn Threads @nhiinhii_095
                 </a>
               </div>
             </motion.nav>
@@ -155,9 +161,21 @@ export default function Layout() {
       </main>
 
       <footer className="border-t border-line">
-        <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-6 text-sm text-muted sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-10">
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-6 text-sm text-muted sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-10">
           <p>© {new Date().getFullYear()} Trạm Hoa Nhỏ · Hoa kẽm nhung thủ công</p>
-          <button type="button" onClick={() => window.scrollTo(0, 0)} className="text-left hover:text-ink">Lên đầu trang ↑</button>
+          <div className="flex items-center gap-4 text-xs">
+            <a href={CONTACT.zalo} target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:text-ink">
+              <ChatCircleDots size={14} /> Zalo
+            </a>
+            <span>·</span>
+            <a href={CONTACT.threads} target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:text-ink">
+              <At size={14} /> Threads
+            </a>
+            <span>·</span>
+            <button type="button" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="text-left hover:text-ink">
+              Lên đầu trang ↑
+            </button>
+          </div>
         </div>
       </footer>
     </div>

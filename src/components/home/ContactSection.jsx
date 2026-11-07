@@ -1,11 +1,24 @@
 import { motion, useReducedMotion } from 'motion/react';
-import { Phone, ChatCircleDots, EnvelopeSimple, ArrowUpRight } from '@phosphor-icons/react';
+import { ChatCircleDots, At, ArrowUpRight } from '@phosphor-icons/react';
 import { CONTACT } from '../../lib/format';
 
 const CHANNELS = [
-  { icon: Phone, label: 'Gọi điện', value: CONTACT.phoneDisplay, href: `tel:${CONTACT.phone}` },
-  { icon: ChatCircleDots, label: 'Nhắn Zalo', value: CONTACT.phoneDisplay, href: CONTACT.zalo, external: true },
-  { icon: EnvelopeSimple, label: 'Email', value: CONTACT.email, href: `mailto:${CONTACT.email}`, wide: true },
+  {
+    icon: ChatCircleDots,
+    label: 'Nhắn tin Zalo',
+    value: '0399 176 095',
+    subtext: 'Bấm để mở Zalo chat và gửi ảnh mẫu',
+    href: CONTACT.zalo,
+    external: true,
+  },
+  {
+    icon: At,
+    label: 'Nhắn qua Threads',
+    value: CONTACT.threadsDisplay,
+    subtext: 'Bấm để xem trang Threads & nhắn tin cho shop',
+    href: CONTACT.threads,
+    external: true,
+  },
 ];
 
 export default function ContactSection() {
@@ -27,13 +40,13 @@ export default function ContactSection() {
               Đặt hoa cùng <em className="text-blush">Trạm Hoa Nhỏ</em>
             </h2>
             <p className="mt-5 max-w-md leading-relaxed text-paper/70">
-              Đặt mẫu có sẵn hoặc làm theo yêu cầu — gửi cho shop ảnh mẫu, màu sắc yêu thích hay vài dòng mô tả, mình sẽ tư vấn và báo giá cho bạn.
+              Đặt mẫu có sẵn hoặc làm theo yêu cầu — nhắn cho shop qua Zalo hoặc Threads kèm ảnh mẫu, màu sắc yêu thích, mình sẽ tư vấn chi tiết và báo giá cho bạn.
             </p>
           </div>
 
           <ul className="grid gap-3 sm:grid-cols-2 lg:col-span-7 lg:self-center">
             {CHANNELS.map((c) => (
-              <li key={c.label} className={c.wide ? 'sm:col-span-2' : ''}>
+              <li key={c.label}>
                 <a
                   href={c.href}
                   {...(c.external ? { target: '_blank', rel: 'noreferrer' } : {})}
@@ -48,6 +61,7 @@ export default function ContactSection() {
                   <div>
                     <p className="text-sm text-paper/60">{c.label}</p>
                     <p className="mt-1 text-lg font-medium [overflow-wrap:anywhere]">{c.value}</p>
+                    {c.subtext && <p className="mt-1 text-xs text-paper/50">{c.subtext}</p>}
                   </div>
                 </a>
               </li>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
-import { X, CaretLeft, CaretRight, Phone, ChatCircleDots, CheckCircle, Flower, PlayCircle } from '@phosphor-icons/react';
+import { X, CaretLeft, CaretRight, At, ChatCircleDots, CheckCircle, Flower, PlayCircle } from '@phosphor-icons/react';
 import { CONTACT, formatVND, parsePrice } from '../../lib/format';
 
 export default function ProductModal({ product, onClose }) {
@@ -119,15 +119,15 @@ export default function ProductModal({ product, onClose }) {
               )}
 
               <div className="mt-8 grid gap-3 pt-2 sm:grid-cols-2 md:mt-auto">
-                <a href={`tel:${CONTACT.phone}`} className="btn btn-accent btn-lg">
-                  <Phone weight="bold" /> Gọi đặt hàng
+                <a href={CONTACT.zalo} target="_blank" rel="noreferrer" className="btn btn-accent btn-lg">
+                  <ChatCircleDots weight="bold" /> Nhắn Zalo đặt mẫu
                 </a>
-                <a href={CONTACT.zalo} target="_blank" rel="noreferrer" className="btn btn-outline btn-lg">
-                  <ChatCircleDots weight="bold" /> Nhắn Zalo
+                <a href={CONTACT.threads} target="_blank" rel="noreferrer" className="btn btn-outline btn-lg">
+                  <At weight="bold" /> Nhắn Threads
                 </a>
               </div>
-              <p className="mt-3 text-center text-sm text-muted">
-                Hotline: <a href={`tel:${CONTACT.phone}`} className="font-medium text-ink hover:text-brick">{CONTACT.phoneDisplay}</a>
+              <p className="mt-3 text-center text-xs text-muted">
+                Shop tư vấn và chốt đơn qua Zalo & Threads · Phản hồi nhanh nhất có thể
               </p>
             </div>
           </div>
