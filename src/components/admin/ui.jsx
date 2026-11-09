@@ -1,5 +1,100 @@
 // Thành phần UI dùng chung cho trang quản trị
-import { CircleNotch } from '@phosphor-icons/react';
+import { useRef, useState } from 'react';
+import { CalendarBlank, CircleNotch } from '@phosphor-icons/react';
+
+// "2026-11-09" -> "09-11-2026"; "2026-11" -> "11-2026"
+const isoToDisplay = (v, type) => {
+  if (!v) return '';
+  const [y, m, d] = String(v).split('-');
+  return type === 'month' ? `${m}-${y}` : `${d}-${m}-${y}`;
+};
+
+// "9-11-2026" / "09/11/2026" -> "2026-11-09"; trả về null nếu sai
+const displayToIso = (text, type) => {
+  const t = text.trim();
+  if (type === 'month') {
+    const m = /^(\d{1,2})[-/.](\d{4})$/.exec(t);
+    if (!m || +m[1] < 1 || +m[1] > 12) return null;
+    return `${m[2]}-${m[1].padStart(2, '0')}`;
+  }
+  const m = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/.exec(t);
+  if (!m) return null;
+  const [d, mo, y] = [+m[1], +m[2], +m[3]];
+  const date = new Date(y, mo - 1, d);
+  if (date.getFullYear() !== y || date.getMonth() !== mo - 1 || date.getDate() !== d) return null;
+  return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+};
+
+/**
+ * Ô chọn ngày luôn hiển thị dạng dd-mm-yyyy (hoặc mm-yyyy khi type="month"),
+ * không phụ thuộc ngôn ngữ trình duyệt. Gõ tay được, hoặc bấm biểu tượng lịch để chọn.
+ * value / onChange dùng chuỗi ISO ("yyyy-mm-dd" hoặc "yyyy-mm").
+ */
+export function DateField({ value, onChange, type = 'date', max, id, required, placeholder, className = '', ...rest }) {
+  const pickerRef = useRef(null);
+  const [draft, setDraft] = useState(null); // chuỗi đang gõ dở
+  const shown = draft ?? isoToDisplay(value, type);
+
+  const commit = () => {
+    if (draft === null) return;
+    const t = draft.trim();
+    if (!t) {
+      if (!required) onChange('');
+    } else {
+      const iso = displayToIso(t, type);
+      if (iso && (!max || iso <= max)) onChange(iso);
+    }
+    setDraft(null);
+  };
+
+  const openPicker = () => {
+    try {
+      pickerRef.current?.showPicker();
+    } catch {
+      pickerRef.current?.focus();
+    }
+  };
+
+  return (
+    <div className={`relative ${className}`}>
+      <input
+        id={id}
+        type="text"
+        inputMode="numeric"
+        value={shown}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), commit())}
+        placeholder={placeholder || (type === 'month' ? 'mm-yyyy' : 'dd-mm-yyyy')}
+        required={required}
+        className="input w-full pr-11"
+        {...rest}
+      />
+      <button
+        type="button"
+        onClick={openPicker}
+        className="absolute right-1.5 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-lg text-muted hover:bg-ink/5 hover:text-ink"
+        aria-label="Mở lịch"
+        tabIndex={-1}
+      >
+        <CalendarBlank size={18} />
+      </button>
+      <input
+        ref={pickerRef}
+        type={type}
+        value={value || ''}
+        max={max}
+        onChange={(e) => {
+          setDraft(null);
+          onChange(e.target.value);
+        }}
+        tabIndex={-1}
+        aria-hidden="true"
+        className="pointer-events-none absolute bottom-0 right-0 size-px opacity-0"
+      />
+    </div>
+  );
+}
 
 export function PageHeader({ title, description, actions }) {
   return (

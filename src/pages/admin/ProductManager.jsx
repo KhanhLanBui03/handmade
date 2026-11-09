@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Trash, PencilSimple, MagnifyingGlass, Package, ArrowSquareOut } from '@phosphor-icons/react';
+import { Plus, Trash, PencilSimple, MagnifyingGlass, Package, ArrowSquareOut, Eye, EyeSlash } from '@phosphor-icons/react';
 import { supabase } from '../../lib/supabase';
 import { formatVND, getCover, parsePrice } from '../../lib/format';
 import { PageHeader, Spinner, EmptyState, Thumb } from '../../components/admin/ui';
@@ -30,6 +30,22 @@ export default function ProductManager() {
     setProducts((list) => list.filter((p) => p.id !== product.id));
   };
 
+  // Ẩn / hiện sản phẩm với khách (vẫn giữ trong admin)
+  const toggleHidden = async (product) => {
+    const is_hidden = !product.is_hidden;
+    const { error } = await supabase.from('products').update({ is_hidden }).eq('id', product.id);
+    if (error) {
+      return alert(
+        /is_hidden/.test(error.message || '')
+          ? 'Chưa có cột ẩn sản phẩm. Mở Supabase → SQL Editor, chạy file supabase/products_hidden.sql rồi thử lại.'
+          : 'Không cập nhật được: ' + error.message,
+      );
+    }
+    setProducts((list) => list.map((p) => (p.id === product.id ? { ...p, is_hidden } : p)));
+  };
+
+  const hiddenCount = products.filter((p) => p.is_hidden).length;
+
   const categoryNames = useMemo(
     () => [...new Set(products.map((p) => p.categories?.name || 'Chưa phân loại'))],
     [products],
@@ -39,7 +55,8 @@ export default function ProductManager() {
     const q = normalize(search.trim());
     return products.filter((p) => {
       const cat = p.categories?.name || 'Chưa phân loại';
-      if (category !== 'all' && cat !== category) return false;
+      if (category === '__hidden__') { if (!p.is_hidden) return false; }
+      else if (category !== 'all' && cat !== category) return false;
       return !q || normalize(p.name).includes(q);
     });
   }, [products, search, category]);
@@ -48,7 +65,7 @@ export default function ProductManager() {
     <div>
       <PageHeader
         title="Sản phẩm"
-        description={`${products.length} sản phẩm trong cửa hàng`}
+        description={`${products.length} sản phẩm trong cửa hàng${hiddenCount ? ` · ${hiddenCount} đang ẩn với khách` : ''}`}
         actions={
           <Link to="/admin/product/new" className="btn btn-primary">
             <Plus weight="bold" /> Thêm sản phẩm
@@ -72,6 +89,7 @@ export default function ProductManager() {
           <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Lọc danh mục" className="input sm:w-56">
             <option value="all">Tất cả danh mục</option>
             {categoryNames.map((c) => <option key={c} value={c}>{c}</option>)}
+            {hiddenCount > 0 && <option value="__hidden__">Đang ẩn ({hiddenCount})</option>}
           </select>
         </div>
 
@@ -101,9 +119,10 @@ export default function ProductManager() {
                 {visible.map((p) => (
                   <tr key={p.id} className="transition-colors hover:bg-paper/60">
                     <td className="px-5 py-3">
-                      <div className="flex items-center gap-3">
+                      <div className={`flex items-center gap-3 ${p.is_hidden ? 'opacity-50' : ''}`}>
                         <Thumb src={getCover(p)} />
                         <span className="font-medium">{p.name}</span>
+                        {p.is_hidden && <span className="badge bg-ink/10 text-xs text-ink">Đang ẩn</span>}
                       </div>
                     </td>
                     <td className="px-5 py-3">
@@ -113,6 +132,7 @@ export default function ProductManager() {
                     <td className="px-5 py-3 text-right font-semibold">{formatVND(parsePrice(p.price))}</td>
                     <td className="px-5 py-3">
                       <div className="flex justify-end gap-1">
+                        <HideButton product={p} onToggle={toggleHidden} />
                         <Link to={`/?sp=${p.id}`} target="_blank" className="icon-btn" aria-label={`Xem ${p.name} trên cửa hàng`} title="Xem trên cửa hàng">
                           <ArrowSquareOut size={18} />
                         </Link>
@@ -133,11 +153,15 @@ export default function ProductManager() {
             <ul className="divide-y divide-line md:hidden">
               {visible.map((p) => (
                 <li key={p.id} className="flex items-center gap-3 p-4">
-                  <Thumb src={getCover(p)} className="size-14" />
+                  <Thumb src={getCover(p)} className={`size-14 ${p.is_hidden ? 'opacity-50' : ''}`} />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">{p.name}</p>
+                    <p className="truncate font-medium">
+                      {p.is_hidden && <span className="badge mr-1.5 bg-ink/10 text-xs text-ink">Đang ẩn</span>}
+                      {p.name}
+                    </p>
                     <p className="text-sm text-muted">{p.categories?.name || 'Chưa phân loại'} · {formatVND(parsePrice(p.price))}</p>
                   </div>
+                  <HideButton product={p} onToggle={toggleHidden} />
                   <Link to={`/admin/product/edit/${p.id}`} className="icon-btn" aria-label={`Sửa ${p.name}`}>
                     <PencilSimple size={18} />
                   </Link>
@@ -151,5 +175,21 @@ export default function ProductManager() {
         )}
       </div>
     </div>
+  );
+}
+
+function HideButton({ product, onToggle }) {
+  const label = product.is_hidden ? `Hiện ${product.name} cho khách` : `Ẩn ${product.name} với khách`;
+  return (
+    <button
+      type="button"
+      onClick={() => onToggle(product)}
+      className={`icon-btn ${product.is_hidden ? 'text-brick' : ''}`}
+      aria-label={label}
+      aria-pressed={!!product.is_hidden}
+      title={product.is_hidden ? 'Đang ẩn — bấm để hiện cho khách' : 'Ẩn với khách'}
+    >
+      {product.is_hidden ? <EyeSlash size={18} /> : <Eye size={18} />}
+    </button>
   );
 }

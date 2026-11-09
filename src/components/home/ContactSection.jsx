@@ -35,9 +35,9 @@ export default function ContactSection() {
       >
         <div className="relative grid gap-12 px-6 py-14 sm:px-10 lg:grid-cols-12 lg:px-14 lg:py-20">
           <div className="lg:col-span-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sunflower">Liên hệ</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-hydrangea">Liên hệ</p>
             <h2 className="mt-4 font-display text-4xl leading-[1.05] tracking-tight sm:text-5xl">
-              Đặt hoa cùng <em className="text-blush">Trạm Hoa Nhỏ</em>
+              Đặt hoa cùng <em className="text-hydrangea">Trạm Hoa Nhỏ</em>
             </h2>
             <p className="mt-5 max-w-md leading-relaxed text-paper/70">
               Đặt mẫu có sẵn hoặc làm theo yêu cầu — nhắn cho shop qua Zalo hoặc Threads kèm ảnh mẫu, màu sắc yêu thích, mình sẽ tư vấn chi tiết và báo giá cho bạn.

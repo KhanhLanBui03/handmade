@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { LockKey, Envelope, CircleNotch, Flower, ArrowLeft, WarningCircle } from '@phosphor-icons/react';
+import { LockKey, Envelope, CircleNotch, ArrowLeft, WarningCircle } from '@phosphor-icons/react';
 import { supabase } from '../../lib/supabase';
+import { BrandMark } from '../../components/BrandLogo';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -32,7 +33,7 @@ export default function Login() {
         <div className="absolute inset-0 bg-gradient-to-t from-ink/80 via-ink/20 to-transparent" />
         <div className="absolute inset-x-0 bottom-0 p-12 text-white">
           <p className="max-w-md font-display text-4xl leading-tight">
-            Quản lý cửa hàng hoa <em className="text-blush">nhẹ nhàng</em> như cách bạn uốn từng cánh hoa.
+            Quản lý cửa hàng hoa <em className="text-hydrangea">nhẹ nhàng</em> như cách bạn uốn từng cánh hoa.
           </p>
         </div>
       </div>
@@ -49,9 +50,7 @@ export default function Login() {
           transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
           className="m-auto w-full max-w-sm py-12"
         >
-          <span className="flex size-12 items-center justify-center rounded-full bg-brick text-white">
-            <Flower size={26} weight="fill" />
-          </span>
+          <BrandMark className="size-12" />
           <h1 className="mt-6 text-3xl font-semibold tracking-tight">Đăng nhập quản trị</h1>
           <p className="mt-2 text-muted">Quản lý sản phẩm, danh mục và hóa đơn bán hàng.</p>
 

@@ -1,27 +1,28 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: 'Be Vietnam Pro', ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'Fraunces', ui-serif, Georgia, serif;
+  /* Một font không chân cho toàn bộ web (tiêu đề chỉ đậm hơn) */
+  --font-sans: 'Be Vietnam Pro', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Be Vietnam Pro', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
 
-  /* Nền & bề mặt */
-  --color-paper: #fbf7f1;
-  --color-paper-dim: #f3ece2;
+  /* Nền & bề mặt — trắng ngả xanh nước, sạch và thoáng */
+  --color-paper: #f3f8fc;
+  --color-paper-dim: #e4eff8;
   --color-surface: #ffffff;
-  --color-line: #e8dfd3;
+  --color-line: #d6e4f0;
 
-  /* Chữ */
-  --color-ink: #241e19;
-  --color-muted: #6e645a;
+  /* Chữ — xanh navy rất đậm thay cho đen */
+  --color-ink: #0b1e33;
+  --color-muted: #5a6b7d;
 
-  /* Màu nhấn */
-  --color-brick: #b4523a;
-  --color-brick-dark: #93412d;
-  --color-blush: #f5e2d8;
-  --color-sage: #66775a;
-  --color-sage-soft: #e5eadc;
-  --color-sunflower: #efb02e;
-  --color-hydrangea: #8fa9d4;
+  /* Màu chủ đạo: XANH NƯỚC (tên biến giữ nguyên để không phải sửa toàn bộ code) */
+  --color-brick: #0277bd;       /* xanh nước — nút chính, link, điểm nhấn */
+  --color-brick-dark: #015a92;  /* xanh nước đậm — khi rê chuột */
+  --color-blush: #e0f0fb;       /* xanh nước rất nhạt — nền nhãn, vùng chọn */
+  --color-sage: #0e8a6a;        /* xanh ngọc — trạng thái thành công */
+  --color-sage-soft: #daf3eb;
+  --color-sunflower: #f2b53a;
+  --color-hydrangea: #7cc0ec;
 
   --ease-out-soft: cubic-bezier(0.16, 1, 0.3, 1);
 
@@ -54,6 +55,10 @@
   ::selection {
     @apply bg-blush text-ink;
   }
+  /* Không dùng chữ nghiêng — phần nhấn mạnh chỉ đổi màu */
+  em {
+    font-style: normal;
+  }
   :focus-visible {
     outline: 2px solid var(--color-brick);
     outline-offset: 2px;
@@ -70,12 +75,14 @@
 }
 
 @layer components {
+  /* Tiêu đề: cùng font với nội dung, đậm vừa và khít chữ như các brand lớn */
   .font-display {
-    font-optical-sizing: auto;
+    font-weight: 600;
+    letter-spacing: -0.025em;
   }
 
   .eyebrow {
-    @apply text-xs font-semibold uppercase tracking-[0.18em] text-brick;
+    @apply text-xs font-semibold uppercase tracking-[0.12em] text-brick;
   }
 
   /* Nút bấm */

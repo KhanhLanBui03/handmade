@@ -15,10 +15,11 @@ import {
 } from '@phosphor-icons/react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import { formatVND } from '../../lib/format';
+import { format, parseISO } from 'date-fns';
+import { formatVND, formatQty } from '../../lib/format';
+import { UNITS, migrateOldUnits } from '../../lib/units';
 import { PageHeader, StatCard, Spinner, EmptyState } from '../../components/admin/ui';
 
-const UNITS = ['cái', 'cuộn', 'bó', 'cây', 'bịch', 'tờ', 'hộp', 'kg', 'mét', 'gói'];
 const toNumber = (v) => Number(String(v ?? '').replace(/[^\d]/g, '')) || 0;
 
 const isMissingTable = (error) =>
@@ -46,6 +47,7 @@ export default function MaterialManager() {
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
+      await migrateOldUnits(); // đổi đơn vị "bịch" cũ thành "xấp"
       const [matRes, impRes] = await Promise.all([
         supabase.from('materials').select('*').order('created_at', { ascending: false }),
         supabase.from('stock_imports').select('id, import_date, items'),
@@ -75,10 +77,10 @@ export default function MaterialManager() {
         if (!stats[key]) {
           stats[key] = { totalQty: 0, totalCost: 0, importCount: 0, lastDate: imp.import_date };
         }
-        const qty = toNumber(it.quantity);
-        const price = toNumber(it.unit_price);
+        const qty = Number(it.quantity) || 0;
+        const price = Number(it.unit_price) || 0;
         stats[key].totalQty += qty;
-        stats[key].totalCost += qty * price;
+        stats[key].totalCost += Math.round(qty * price);
         stats[key].importCount += 1;
         if (!stats[key].lastDate || imp.import_date > stats[key].lastDate) {
           stats[key].lastDate = imp.import_date;
@@ -181,7 +183,7 @@ export default function MaterialManager() {
     const stats = materialStats[mat.name.trim().toLowerCase()];
     const extraWarn =
       stats && stats.importCount > 0
-        ? `\nChú ý: Nguyên liệu này đã có ${stats.importCount} lần nhập hàng trong lịch sử (tổng ${stats.totalQty} ${mat.unit}).`
+        ? `\nChú ý: Nguyên liệu này đã có ${stats.importCount} lần nhập hàng trong lịch sử (tổng ${formatQty(stats.totalQty)} ${mat.unit}).`
         : '';
 
     if (!confirm(`Xóa nguyên liệu "${mat.name}"?${extraWarn}`)) return;
@@ -225,7 +227,7 @@ export default function MaterialManager() {
       <div className="mb-8 grid gap-4 sm:grid-cols-3">
         <StatCard icon={Shapes} label="Số loại nguyên liệu" value={materials.length} tone="brick" />
         <StatCard icon={CurrencyCircleDollar} label="Tổng tiền đã chi mua" value={formatVND(overallStats.grandCost)} tone="sage" hint="Tính từ tất cả phiếu nhập" />
-        <StatCard icon={Stack} label="Tổng số lượng đã nhập" value={overallStats.grandQty} tone="sun" hint="Tổng các món đã nhập về" />
+        <StatCard icon={Stack} label="Tổng số lượng đã nhập" value={formatQty(overallStats.grandQty)} tone="sun" hint="Tổng các món đã nhập về" />
       </div>
 
       <div className="grid items-start gap-6 lg:grid-cols-3">
@@ -441,7 +443,7 @@ export default function MaterialManager() {
                               <div>
                                 <span className="text-muted block text-xs">Tổng đã nhập:</span>
                                 <span className="text-base font-bold text-ink">
-                                  {stats.totalQty.toLocaleString('vi-VN')} {mat.unit}
+                                  {formatQty(stats.totalQty)} {mat.unit}
                                 </span>
                               </div>
                               <div>
@@ -456,7 +458,7 @@ export default function MaterialManager() {
                                   {stats.importCount} lần
                                   {stats.lastDate && (
                                     <span className="text-xs text-muted font-normal">
-                                      {' '}(gần nhất: {stats.lastDate})
+                                      {' '}(gần nhất: {format(parseISO(stats.lastDate), 'dd-MM-yyyy')})
                                     </span>
                                   )}
                                 </span>

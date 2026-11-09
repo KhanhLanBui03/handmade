@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import {
   Plus,
@@ -8,17 +8,18 @@ import {
   WarningCircle,
   Database,
   Shapes,
-  PencilSimple,
   ArrowSquareOut,
+  PencilSimple,
 } from '@phosphor-icons/react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import { formatVND } from '../../lib/format';
-import { PageHeader } from '../../components/admin/ui';
+import { formatVND, formatQty, isQtyExpression, parseQty, shortId } from '../../lib/format';
+import { DateField, PageHeader } from '../../components/admin/ui';
+import { UNITS, fixUnit, migrateOldUnits } from '../../lib/units';
 import ImportHistory from '../../components/admin/ImportHistory';
 
-const UNITS = ['cái', 'cuộn', 'bó', 'cây', 'bịch', 'tờ', 'hộp', 'kg', 'mét', 'gói'];
 const toNumber = (v) => Number(String(v ?? '').replace(/[^\d]/g, '')) || 0;
+const sameName = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
 
 let lineSeq = 0;
 const newLine = () => ({
@@ -28,7 +29,6 @@ const newLine = () => ({
   unit: 'cái',
   unit_price: '',
   material_id: null,
-  isCustom: false,
 });
 const today = () => format(new Date(), 'yyyy-MM-dd');
 
@@ -36,8 +36,14 @@ const today = () => format(new Date(), 'yyyy-MM-dd');
 const isMissingTable = (error) =>
   error && (error.code === '42P01' || error.code === 'PGRST205' || /stock_imports/.test(error.message || ''));
 
+const sortImports = (list) =>
+  [...list].sort(
+    (a, b) =>
+      String(b.import_date).localeCompare(String(a.import_date)) ||
+      String(b.created_at).localeCompare(String(a.created_at)),
+  );
+
 export default function StockImport() {
-  const [products, setProducts] = useState([]);
   const [materials, setMaterials] = useState([]);
   const [imports, setImports] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
@@ -47,14 +53,16 @@ export default function StockImport() {
   const [importDate, setImportDate] = useState(today);
   const [supplier, setSupplier] = useState('');
   const [note, setNote] = useState('');
+  const [editing, setEditing] = useState(null); // phiếu đang sửa (null = tạo phiếu mới)
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
   const firstInput = useRef(null);
+  const formRef = useRef(null);
 
   useEffect(() => {
     async function fetchData() {
-      const [prodRes, matRes, impRes] = await Promise.all([
-        supabase.from('products').select('id, name').order('name'),
+      await migrateOldUnits(); // đổi đơn vị "bịch" cũ thành "xấp"
+      const [matRes, impRes] = await Promise.all([
         supabase.from('materials').select('*').order('name'),
         supabase
           .from('stock_imports')
@@ -62,7 +70,6 @@ export default function StockImport() {
           .order('import_date', { ascending: false })
           .order('created_at', { ascending: false }),
       ]);
-      if (prodRes.data) setProducts(prodRes.data);
       if (matRes.data) setMaterials(matRes.data);
       if (isMissingTable(impRes.error)) setMissingTable(true);
       else if (impRes.data) setImports(impRes.data);
@@ -80,37 +87,95 @@ export default function StockImport() {
   const removeLine = (key) => setLines((ls) => (ls.length > 1 ? ls.filter((l) => l.key !== key) : ls));
   const addLine = () => setLines((ls) => [...ls, newLine()]);
 
-  // Xử lý khi chọn một nguyên liệu từ danh mục
-  const handleSelectMaterial = (key, materialName) => {
-    if (materialName === '__custom__') {
-      updateLine(key, { isCustom: true, name: '', material_id: null });
-      return;
-    }
-    const mat = materials.find((m) => m.name === materialName);
+  // Gõ tên: nếu trùng nguyên liệu đã lưu thì tự điền đơn vị & đơn giá
+  const handleNameChange = (line, value) => {
+    const mat = materials.find((m) => sameName(m.name, value));
     if (mat) {
-      updateLine(key, {
-        name: mat.name,
-        unit: mat.unit || 'cái',
-        unit_price: mat.default_price ? String(mat.default_price) : '',
+      updateLine(line.key, {
+        name: value,
+        unit: mat.unit || line.unit,
+        unit_price: mat.default_price ? String(mat.default_price) : line.unit_price,
         material_id: mat.id,
-        isCustom: false,
       });
     } else {
-      updateLine(key, { name: '', material_id: null, isCustom: false });
+      updateLine(line.key, { name: value, material_id: null });
     }
   };
 
   const filledLines = lines.filter((l) => l.name.trim());
-  const total = filledLines.reduce((s, l) => s + toNumber(l.quantity) * toNumber(l.unit_price), 0);
-  const invalid = filledLines.some((l) => toNumber(l.quantity) <= 0);
+  const lineTotal = (l) => Math.round(parseQty(l.quantity) * toNumber(l.unit_price));
+  const total = filledLines.reduce((s, l) => s + lineTotal(l), 0);
+  const invalid = filledLines.some((l) => parseQty(l.quantity) <= 0);
   const canSave = filledLines.length > 0 && !invalid && !saving && !missingTable;
+
+  // Tên mới (chưa có trong danh mục nguyên liệu) sẽ được lưu vào danh mục
+  const newMaterialNames = [
+    ...new Map(
+      filledLines
+        .filter((l) => !materials.some((m) => sameName(m.name, l.name)))
+        .map((l) => [l.name.trim().toLowerCase(), l]),
+    ).values(),
+  ];
+
+  // Nhà cung cấp đã từng nhập — gợi ý để chọn lại
+  const suppliers = useMemo(() => {
+    const map = new Map();
+    imports.forEach((r) => {
+      const name = (r.supplier || '').trim();
+      if (name && !map.has(name.toLowerCase())) map.set(name.toLowerCase(), name);
+    });
+    return [...map.values()].sort((a, b) => a.localeCompare(b, 'vi'));
+  }, [imports]);
 
   const resetForm = () => {
     setLines([newLine()]);
     setSupplier('');
     setNote('');
     setImportDate(today());
+    setEditing(null);
     firstInput.current?.focus();
+  };
+
+  const startEdit = (record) => {
+    setEditing(record);
+    setImportDate(record.import_date);
+    setSupplier(record.supplier || '');
+    setNote(record.note || '');
+    const items = record.items || [];
+    setLines(
+      items.length
+        ? items.map((it) => ({
+            key: ++lineSeq,
+            name: it.name || '',
+            quantity: it.quantity != null ? formatQty(it.quantity) : '',
+            unit: fixUnit(it.unit) || 'cái',
+            unit_price: it.unit_price ? String(it.unit_price) : '',
+            material_id: it.material_id || null,
+          }))
+        : [newLine()],
+    );
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  // Lưu các nguyên liệu tự nhập tay vào danh mục; trả về danh sách nguyên liệu mới nhất
+  const saveNewMaterials = async () => {
+    if (newMaterialNames.length === 0) return { list: materials, added: 0 };
+    const rows = newMaterialNames.map((l) => ({
+      name: l.name.trim(),
+      unit: l.unit,
+      default_price: toNumber(l.unit_price),
+    }));
+    const { data, error } = await supabase
+      .from('materials')
+      .upsert(rows, { onConflict: 'name', ignoreDuplicates: true })
+      .select();
+    if (error) {
+      showToast('error', 'Không tự lưu được nguyên liệu mới: ' + error.message);
+      return { list: materials, added: 0 };
+    }
+    const list = [...materials, ...(data || [])].sort((a, b) => a.name.localeCompare(b.name, 'vi'));
+    setMaterials(list);
+    return { list, added: data?.length || 0 };
   };
 
   const handleSave = async (e) => {
@@ -118,33 +183,32 @@ export default function StockImport() {
     if (!canSave) return;
     setSaving(true);
 
+    const { list: matList, added } = await saveNewMaterials();
+
     const items = filledLines.map((l) => {
       const name = l.name.trim();
-      const matchMat = materials.find((m) => m.name.toLowerCase() === name.toLowerCase());
-      const matchProd = products.find((p) => p.name.toLowerCase() === name.toLowerCase());
+      const matchMat = matList.find((m) => sameName(m.name, name));
       return {
         name,
         material_id: l.material_id || matchMat?.id || null,
-        product_id: matchProd?.id || null,
-        quantity: toNumber(l.quantity),
+        quantity: parseQty(l.quantity),
         unit: l.unit,
         unit_price: toNumber(l.unit_price),
       };
     });
 
-    const { data, error } = await supabase
-      .from('stock_imports')
-      .insert([
-        {
-          import_date: importDate,
-          supplier: supplier.trim() || null,
-          note: note.trim() || null,
-          items,
-          total_cost: total,
-        },
-      ])
-      .select()
-      .single();
+    const payload = {
+      import_date: importDate,
+      supplier: supplier.trim() || null,
+      note: note.trim() || null,
+      items,
+      total_cost: total,
+    };
+
+    const query = editing
+      ? supabase.from('stock_imports').update(payload).eq('id', editing.id)
+      : supabase.from('stock_imports').insert([payload]);
+    const { data, error } = await query.select().single();
     setSaving(false);
 
     if (error) {
@@ -152,22 +216,17 @@ export default function StockImport() {
       showToast('error', 'Không lưu được: ' + error.message);
       return;
     }
-    // Thêm phiếu mới lên đầu lịch sử
-    setImports((list) =>
-      [data, ...list].sort(
-        (a, b) =>
-          String(b.import_date).localeCompare(String(a.import_date)) ||
-          String(b.created_at).localeCompare(String(a.created_at)),
-      ),
-    );
-    showToast('success', `Đã lưu phiếu nhập ${formatVND(total)}`);
+
+    setImports((list) => sortImports(editing ? list.map((r) => (r.id === data.id ? data : r)) : [data, ...list]));
+    const extra = added > 0 ? ` · thêm ${added} nguyên liệu mới vào danh mục` : '';
+    showToast('success', `${editing ? 'Đã cập nhật' : 'Đã lưu'} phiếu nhập ${formatVND(total)}${extra}`);
     resetForm();
   };
 
   const handleDelete = async (record) => {
     if (
       !confirm(
-        `Xóa phiếu nhập ngày ${format(new Date(`${record.import_date}T00:00:00`), 'dd/MM/yyyy')} (${formatVND(
+        `Xóa phiếu nhập ngày ${format(new Date(`${record.import_date}T00:00:00`), 'dd-MM-yyyy')} (${formatVND(
           record.total_cost,
         )})?`,
       )
@@ -176,6 +235,7 @@ export default function StockImport() {
     const { error } = await supabase.from('stock_imports').delete().eq('id', record.id);
     if (error) return showToast('error', 'Không xóa được: ' + error.message);
     setImports((list) => list.filter((r) => r.id !== record.id));
+    if (editing?.id === record.id) resetForm();
   };
 
   return (
@@ -204,18 +264,30 @@ export default function StockImport() {
       )}
 
       {/* Phiếu nhập */}
-      <form onSubmit={handleSave} className="card mb-10">
+      <form
+        ref={formRef}
+        onSubmit={handleSave}
+        className={`card mb-10 scroll-mt-6 ${editing ? 'ring-2 ring-brick/60' : ''}`}
+      >
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-line px-5 py-4 gap-2">
-          <h2 className="font-semibold text-lg">Phiếu nhập mới</h2>
-          <span className="text-xs text-muted">
-            {materials.length > 0 ? (
-              <span>Đã có {materials.length} nguyên liệu sẵn sàng để chọn nhanh.</span>
-            ) : (
-              <Link to="/admin/materials" className="text-brick hover:underline">
-                + Thêm nguyên liệu để chọn nhanh và cố định giá
-              </Link>
-            )}
-          </span>
+          {editing ? (
+            <h2 className="flex items-center gap-2 font-semibold text-lg">
+              <PencilSimple size={20} className="text-brick" /> Sửa phiếu nhập #{shortId(editing.id)}
+            </h2>
+          ) : (
+            <h2 className="font-semibold text-lg">Phiếu nhập mới</h2>
+          )}
+          {editing ? (
+            <button type="button" onClick={resetForm} className="btn btn-ghost btn-sm text-muted">
+              <X size={14} weight="bold" /> Hủy sửa
+            </button>
+          ) : (
+            <span className="text-xs text-muted">
+              {materials.length > 0
+                ? `Đã có ${materials.length} nguyên liệu để chọn nhanh. Tên mới tự nhập sẽ được lưu vào danh mục.`
+                : 'Tên nguyên liệu tự nhập sẽ được lưu vào danh mục khi lưu phiếu.'}
+            </span>
+          )}
         </div>
 
         <div className="space-y-4 p-5">
@@ -224,14 +296,12 @@ export default function StockImport() {
               <label htmlFor="import-date" className="label">
                 Ngày nhập
               </label>
-              <input
+              <DateField
                 id="import-date"
-                type="date"
                 required
                 value={importDate}
                 max={today()}
-                onChange={(e) => setImportDate(e.target.value)}
-                className="input"
+                onChange={(v) => v && setImportDate(v)}
               />
             </div>
             <div className="sm:col-span-2">
@@ -241,18 +311,25 @@ export default function StockImport() {
               <input
                 id="supplier"
                 type="text"
+                list="supplier-names"
+                autoComplete="off"
                 value={supplier}
                 onChange={(e) => setSupplier(e.target.value)}
-                placeholder="VD: Tiệm phụ liệu Chợ Lớn"
+                placeholder={suppliers.length ? 'Gõ hoặc chọn nơi mua đã lưu...' : 'VD: Tiệm phụ liệu Chợ Lớn'}
                 className="input"
               />
+              <datalist id="supplier-names">
+                {suppliers.map((s) => (
+                  <option key={s} value={s} />
+                ))}
+              </datalist>
             </div>
           </div>
 
           {/* Dòng hàng */}
           <div>
             <div className="hidden grid-cols-12 gap-3 px-1 pb-2 text-xs font-semibold uppercase tracking-wider text-muted md:grid">
-              <span className="col-span-4">Tên hàng / Nguyên liệu</span>
+              <span className="col-span-4">Nguyên liệu</span>
               <span className="col-span-2">Số lượng</span>
               <span className="col-span-2">Đơn vị</span>
               <span className="col-span-2">Đơn giá nhập</span>
@@ -261,116 +338,79 @@ export default function StockImport() {
 
             <datalist id="all-names">
               {materials.map((m) => (
-                <option key={`m-${m.id}`} value={m.name} />
-              ))}
-              {products.map((p) => (
-                <option key={`p-${p.id}`} value={p.name} />
+                <option key={`m-${m.id}`} value={m.name} label={`${formatVND(m.default_price)} / ${m.unit}`} />
               ))}
             </datalist>
 
             <ul className="space-y-3">
               {lines.map((l, idx) => {
-                const qtyMissing = l.name.trim() && toNumber(l.quantity) <= 0;
-                const isSavedMaterial = materials.some((m) => m.name === l.name);
+                const qty = parseQty(l.quantity);
+                const qtyMissing = l.name.trim() && qty <= 0;
+                const isNew = l.name.trim() && newMaterialNames.some((n) => sameName(n.name, l.name));
+                const unitOptions = UNITS.includes(l.unit) ? UNITS : [l.unit, ...UNITS];
 
                 return (
                   <li
                     key={l.key}
-                    className="grid grid-cols-2 gap-3 rounded-xl border border-line bg-paper/50 p-3 md:grid-cols-12 md:items-center md:border-0 md:bg-transparent md:p-0"
+                    className="grid grid-cols-2 gap-3 rounded-xl border border-line bg-paper/50 p-3 md:grid-cols-12 md:items-start md:border-0 md:bg-transparent md:p-0"
                   >
-                    {/* Cột 1: Tên hàng / Chọn nguyên liệu */}
-                    <div className="col-span-2 md:col-span-4 flex items-center gap-1.5">
-                      {materials.length > 0 && !l.isCustom ? (
-                        <div className="flex-1 flex gap-1">
-                          <select
-                            ref={idx === 0 ? firstInput : undefined}
-                            value={isSavedMaterial ? l.name : l.name ? '__custom__' : ''}
-                            onChange={(e) => handleSelectMaterial(l.key, e.target.value)}
-                            aria-label={`Chọn nguyên liệu dòng ${idx + 1}`}
-                            className="input font-medium"
-                          >
-                            <option value="">-- Chọn nguyên liệu (Cúp, Kẽm...) --</option>
-                            <optgroup label="Danh mục nguyên liệu đã lưu">
-                              {materials.map((m) => (
-                                <option key={m.id} value={m.name}>
-                                  {m.name} ({formatVND(m.default_price)} / {m.unit})
-                                </option>
-                              ))}
-                            </optgroup>
-                            <option value="__custom__">✍️ Tự gõ nguyên liệu khác...</option>
-                          </select>
-                        </div>
-                      ) : (
-                        <div className="flex-1 flex gap-1 items-center">
-                          <input
-                            ref={idx === 0 ? firstInput : undefined}
-                            type="text"
-                            list="all-names"
-                            value={l.name}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              const matchedMat = materials.find(
-                                (m) => m.name.toLowerCase() === val.trim().toLowerCase(),
-                              );
-                              if (matchedMat) {
-                                updateLine(l.key, {
-                                  name: val,
-                                  unit: matchedMat.unit || l.unit,
-                                  unit_price: matchedMat.default_price
-                                    ? String(matchedMat.default_price)
-                                    : l.unit_price,
-                                  material_id: matchedMat.id,
-                                });
-                              } else {
-                                updateLine(l.key, { name: val });
-                              }
-                            }}
-                            placeholder="Tên hàng, VD: Kẽm nhung, Cúp..."
-                            aria-label={`Tên hàng dòng ${idx + 1}`}
-                            className="input"
-                          />
-                          {materials.length > 0 && (
-                            <button
-                              type="button"
-                              onClick={() => updateLine(l.key, { isCustom: false })}
-                              className="btn btn-ghost btn-sm px-2 text-xs text-muted"
-                              title="Chọn từ danh sách đã lưu"
-                            >
-                              <Shapes size={16} />
-                            </button>
-                          )}
-                        </div>
+                    {/* Cột 1: Một ô duy nhất — gõ tên mới hoặc chọn từ gợi ý nguyên liệu có sẵn */}
+                    <div className="relative col-span-2 md:col-span-4">
+                      <input
+                        ref={idx === 0 ? firstInput : undefined}
+                        type="text"
+                        list="all-names"
+                        value={l.name}
+                        onChange={(e) => handleNameChange(l, e.target.value)}
+                        placeholder="Gõ hoặc chọn nguyên liệu..."
+                        aria-label={`Tên hàng dòng ${idx + 1}`}
+                        className={`input font-medium ${isNew ? 'pr-16' : ''}`}
+                      />
+                      {isNew && (
+                        <span
+                          className="badge pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 bg-sage-soft text-xs text-sage"
+                          title="Nguyên liệu mới — sẽ được lưu vào danh mục khi lưu phiếu"
+                        >
+                          Mới
+                        </span>
                       )}
                     </div>
 
-                    {/* Cột 2: Số lượng (chỉ cần nhập số lượng khi đã chọn nguyên liệu) */}
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      min="1"
-                      value={l.quantity}
-                      onChange={(e) => updateLine(l.key, { quantity: e.target.value })}
-                      placeholder="Số lượng"
-                      aria-label={`Số lượng dòng ${idx + 1}`}
-                      aria-invalid={qtyMissing || undefined}
-                      className={`input md:col-span-2 ${qtyMissing ? 'border-brick' : ''}`}
-                    />
+                    {/* Cột 2: Số lượng — nhận số thập phân và phép tính */}
+                    <div className="md:col-span-2">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={l.quantity}
+                        onChange={(e) => updateLine(l.key, { quantity: e.target.value })}
+                        onBlur={() => {
+                          if (isQtyExpression(l.quantity) && qty > 0) updateLine(l.key, { quantity: formatQty(qty) });
+                        }}
+                        placeholder="VD: 1,5 hoặc 2*3"
+                        aria-label={`Số lượng dòng ${idx + 1}`}
+                        aria-invalid={qtyMissing || undefined}
+                        className={`input w-full ${qtyMissing ? 'border-brick' : ''}`}
+                      />
+                      {isQtyExpression(l.quantity) && (
+                        <p className="mt-1 px-1 text-xs text-muted">= {qty > 0 ? formatQty(qty) : '?'}</p>
+                      )}
+                    </div>
 
-                    {/* Cột 3: Đơn vị (tự động cố định theo nguyên liệu) */}
+                    {/* Cột 3: Đơn vị */}
                     <select
                       value={l.unit}
                       onChange={(e) => updateLine(l.key, { unit: e.target.value })}
                       aria-label={`Đơn vị dòng ${idx + 1}`}
                       className="input md:col-span-2"
                     >
-                      {UNITS.map((u) => (
+                      {unitOptions.map((u) => (
                         <option key={u} value={u}>
                           {u}
                         </option>
                       ))}
                     </select>
 
-                    {/* Cột 4: Đơn giá nhập (tự động điền giá cố định của nguyên liệu) */}
+                    {/* Cột 4: Đơn giá nhập */}
                     <input
                       type="text"
                       inputMode="numeric"
@@ -382,10 +422,8 @@ export default function StockImport() {
                     />
 
                     {/* Cột 5: Thành tiền & Nút xóa dòng */}
-                    <div className="flex items-center justify-between gap-2 md:col-span-2 md:justify-end">
-                      <span className="text-sm font-semibold">
-                        {formatVND(toNumber(l.quantity) * toNumber(l.unit_price))}
-                      </span>
+                    <div className="flex h-11 items-center justify-between gap-2 md:col-span-2 md:justify-end">
+                      <span className="text-sm font-semibold">{formatVND(lineTotal(l))}</span>
                       <button
                         type="button"
                         onClick={() => removeLine(l.key)}
@@ -431,14 +469,27 @@ export default function StockImport() {
             <p className="text-sm text-muted">{filledLines.length} mặt hàng · Tổng tiền nhập</p>
             <p className="text-2xl font-semibold tracking-tight text-brick">{formatVND(total)}</p>
           </div>
-          <button type="submit" disabled={!canSave} className="btn btn-accent btn-lg rounded-xl">
-            {saving ? <CircleNotch size={20} className="animate-spin" /> : <CheckCircle size={20} weight="fill" />}
-            Lưu phiếu nhập
-          </button>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row">
+            {editing && (
+              <button type="button" onClick={resetForm} className="btn btn-outline btn-lg rounded-xl">
+                Hủy
+              </button>
+            )}
+            <button type="submit" disabled={!canSave} className="btn btn-accent btn-lg rounded-xl">
+              {saving ? <CircleNotch size={20} className="animate-spin" /> : <CheckCircle size={20} weight="fill" />}
+              {editing ? 'Cập nhật phiếu nhập' : 'Lưu phiếu nhập'}
+            </button>
+          </div>
         </div>
       </form>
 
-      <ImportHistory imports={imports} loading={loadingHistory} onDelete={handleDelete} />
+      <ImportHistory
+        imports={imports}
+        loading={loadingHistory}
+        onDelete={handleDelete}
+        onEdit={startEdit}
+        editingId={editing?.id}
+      />
 
       {toast && (
         <div

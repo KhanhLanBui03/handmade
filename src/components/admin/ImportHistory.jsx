@@ -11,14 +11,15 @@ import {
   NotePencil,
   Shapes,
   ListDashes,
+  PencilSimple,
 } from '@phosphor-icons/react';
-import { formatVND, shortId } from '../../lib/format';
-import { StatCard, Spinner, EmptyState } from './ui';
+import { formatVND, formatQty, shortId } from '../../lib/format';
+import { StatCard, Spinner, EmptyState, DateField } from './ui';
 
-const toNumber = (v) => Number(String(v ?? '').replace(/[^\d]/g, '')) || 0;
+const num = (v) => Number(v) || 0;
 
 // Lịch sử phiếu nhập: lọc theo tháng, thống kê, xem theo phiếu hoặc cộng dồn theo nguyên liệu
-export default function ImportHistory({ imports, loading, onDelete }) {
+export default function ImportHistory({ imports, loading, onDelete, onEdit, editingId }) {
   const [month, setMonth] = useState(''); // "2026-11"
   const [viewMode, setViewMode] = useState('records'); // 'records' | 'summary'
 
@@ -29,7 +30,7 @@ export default function ImportHistory({ imports, loading, onDelete }) {
 
   const totalCost = visible.reduce((s, r) => s + Number(r.total_cost || 0), 0);
   const totalQty = visible.reduce(
-    (s, r) => s + (r.items || []).reduce((a, i) => a + Number(i.quantity || 0), 0),
+    (s, r) => s + (r.items || []).reduce((a, i) => a + num(i.quantity), 0),
     0,
   );
 
@@ -48,13 +49,13 @@ export default function ImportHistory({ imports, loading, onDelete }) {
             totalQty: 0,
             totalCost: 0,
             importCount: 0,
-            latestPrice: toNumber(it.unit_price),
+            latestPrice: num(it.unit_price),
           };
         }
-        const qty = toNumber(it.quantity);
-        const price = toNumber(it.unit_price);
+        const qty = num(it.quantity);
+        const price = num(it.unit_price);
         map[key].totalQty += qty;
-        map[key].totalCost += qty * price;
+        map[key].totalCost += Math.round(qty * price);
         map[key].importCount += 1;
         if (price > 0) map[key].latestPrice = price;
       });
@@ -71,7 +72,7 @@ export default function ImportHistory({ imports, loading, onDelete }) {
           </h2>
           <p className="mt-1 text-sm text-muted">
             {month
-              ? `Số liệu trong tháng ${month.split('-').reverse().join('/')}`
+              ? `Số liệu trong tháng ${month.split('-').reverse().join('-')}`
               : 'Tổng hợp toàn bộ từ trước đến hiện tại'}
           </p>
         </div>
@@ -101,12 +102,12 @@ export default function ImportHistory({ imports, loading, onDelete }) {
             <label className="sr-only" htmlFor="import-month">
               Lọc theo tháng
             </label>
-            <input
+            <DateField
               id="import-month"
               type="month"
               value={month}
-              onChange={(e) => setMonth(e.target.value)}
-              className="input w-auto h-9 text-xs"
+              onChange={setMonth}
+              className="w-36"
             />
             {month && (
               <button type="button" onClick={() => setMonth('')} className="btn btn-ghost btn-sm">
@@ -120,7 +121,7 @@ export default function ImportHistory({ imports, loading, onDelete }) {
       <div className="mb-5 grid gap-4 sm:grid-cols-3">
         <StatCard icon={CurrencyCircleDollar} label="Tổng tiền nhập" value={formatVND(totalCost)} />
         <StatCard icon={Receipt} label="Số phiếu nhập" value={visible.length} tone="sage" />
-        <StatCard icon={Stack} label="Tổng số lượng đã nhập" value={totalQty} tone="sun" />
+        <StatCard icon={Stack} label="Tổng số lượng đã nhập" value={formatQty(totalQty)} tone="sun" />
       </div>
 
       <div className="card overflow-hidden">
@@ -163,7 +164,7 @@ export default function ImportHistory({ imports, loading, onDelete }) {
                     </td>
                     <td className="px-4 py-3.5 text-muted">{item.unit}</td>
                     <td className="px-4 py-3.5 text-right font-bold text-ink">
-                      {item.totalQty.toLocaleString('vi-VN')} {item.unit}
+                      {formatQty(item.totalQty)} {item.unit}
                     </td>
                     <td className="px-4 py-3.5 text-right text-muted">
                       {item.latestPrice > 0 ? formatVND(item.latestPrice) : '—'}
@@ -183,13 +184,16 @@ export default function ImportHistory({ imports, loading, onDelete }) {
           /* DANH SÁCH THEO PHIẾU NHẬP */
           <ul className="divide-y divide-line">
             {visible.map((r) => (
-              <li key={r.id} className="flex flex-col gap-4 p-5 md:flex-row md:items-start md:gap-6">
+              <li
+                key={r.id}
+                className={`flex flex-col gap-4 p-5 md:flex-row md:items-start md:gap-6 ${editingId === r.id ? 'bg-blush/40' : ''}`}
+              >
                 <div className="md:w-48 md:shrink-0">
                   <span className="badge bg-paper-dim font-mono font-semibold text-ink">#{shortId(r.id)}</span>
                   <p className="mt-2 text-sm font-medium">
-                    Ngày nhập {format(parseISO(r.import_date), 'dd/MM/yyyy')}
+                    Ngày nhập {format(parseISO(r.import_date), 'dd-MM-yyyy')}
                   </p>
-                  <p className="text-xs text-muted">Lưu lúc {format(parseISO(r.created_at), 'HH:mm dd/MM')}</p>
+                  <p className="text-xs text-muted">Lưu lúc {format(parseISO(r.created_at), 'HH:mm dd-MM-yyyy')}</p>
                 </div>
 
                 <div className="min-w-0 flex-1">
@@ -198,12 +202,12 @@ export default function ImportHistory({ imports, loading, onDelete }) {
                       <li key={idx} className="flex justify-between gap-4">
                         <span className="min-w-0">
                           <span className="font-semibold text-muted">
-                            {it.quantity} {it.unit || ''}
+                            {formatQty(it.quantity)} {it.unit || ''}
                           </span>{' '}
                           × {it.name}
                           {it.unit_price > 0 && <span className="text-muted"> · {formatVND(it.unit_price)}</span>}
                         </span>
-                        <span className="shrink-0 text-muted">{formatVND(it.quantity * it.unit_price)}</span>
+                        <span className="shrink-0 text-muted">{formatVND(Math.round(num(it.quantity) * num(it.unit_price)))}</span>
                       </li>
                     ))}
                   </ul>
@@ -225,6 +229,15 @@ export default function ImportHistory({ imports, loading, onDelete }) {
 
                 <div className="flex items-center justify-between gap-4 border-t border-line pt-4 md:w-44 md:flex-col md:items-end md:border-0 md:pt-0">
                   <p className="text-lg font-semibold text-brick">{formatVND(r.total_cost)}</p>
+                  <div className="flex gap-1 md:flex-col md:items-end">
+                  <button
+                    type="button"
+                    onClick={() => onEdit(r)}
+                    disabled={editingId === r.id}
+                    className="btn btn-ghost btn-sm text-muted hover:text-ink disabled:opacity-60"
+                  >
+                    <PencilSimple size={16} /> {editingId === r.id ? 'Đang sửa' : 'Sửa phiếu'}
+                  </button>
                   <button
                     type="button"
                     onClick={() => onDelete(r)}
@@ -232,6 +245,7 @@ export default function ImportHistory({ imports, loading, onDelete }) {
                   >
                     <Trash size={16} /> Xóa phiếu
                   </button>
+                  </div>
                 </div>
               </li>
             ))}

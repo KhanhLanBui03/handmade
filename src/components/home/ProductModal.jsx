@@ -6,11 +6,53 @@ import { CONTACT, formatVND, parsePrice } from '../../lib/format';
 export default function ProductModal({ product, onClose }) {
   const [active, setActive] = useState(0);
   const closeRef = useRef(null);
+  const trackRef = useRef(null); // dải ảnh lướt ngang
+  const dragRef = useRef(null); // kéo bằng chuột trên máy tính
 
   const images = (product.media || []).filter((m) => m.type !== 'video');
   const videos = (product.media || []).filter((m) => m.type === 'video');
   const category = product.categories?.name;
-  const go = (dir) => setActive((i) => (i + dir + images.length) % images.length);
+
+  // Cuộn dải ảnh tới ảnh thứ i (dùng cho mũi tên, ảnh nhỏ, phím, kéo chuột)
+  const scrollToIndex = (i, smooth = true) => {
+    const el = trackRef.current;
+    if (!el || !images.length) return;
+    const idx = (i + images.length) % images.length;
+    el.scrollTo({ left: idx * el.clientWidth, behavior: smooth ? 'smooth' : 'auto' });
+  };
+  // Ảnh đang hiện, đọc thẳng từ vị trí cuộn
+  const currentIndex = () => {
+    const el = trackRef.current;
+    return el ? Math.round(el.scrollLeft / el.clientWidth) : 0;
+  };
+  const go = (dir) => scrollToIndex(currentIndex() + dir);
+
+  // Vuốt / lướt: cập nhật ảnh đang xem theo vị trí cuộn
+  const handleScroll = () => {
+    const el = trackRef.current;
+    if (!el) return;
+    const i = Math.round(el.scrollLeft / el.clientWidth);
+    if (i !== active && i >= 0 && i < images.length) setActive(i);
+  };
+
+  // Kéo bằng chuột (điện thoại & trackpad đã tự lướt được)
+  const onPointerDown = (e) => {
+    if (e.pointerType !== 'mouse' || images.length < 2) return;
+    dragRef.current = { x: e.clientX, left: trackRef.current.scrollLeft };
+    trackRef.current.style.scrollSnapType = 'none';
+  };
+  const onPointerMove = (e) => {
+    if (!dragRef.current) return;
+    trackRef.current.scrollLeft = dragRef.current.left - (e.clientX - dragRef.current.x);
+  };
+  const endDrag = (e) => {
+    if (!dragRef.current) return;
+    const dx = e.clientX - dragRef.current.x;
+    dragRef.current = null;
+    trackRef.current.style.scrollSnapType = '';
+    if (Math.abs(dx) > 40) scrollToIndex(active + (dx < 0 ? 1 : -1));
+    else scrollToIndex(active);
+  };
 
   // Khóa cuộn trang, focus nút đóng, Esc để đóng, phím mũi tên đổi ảnh
   useEffect(() => {
@@ -19,8 +61,12 @@ export default function ProductModal({ product, onClose }) {
     closeRef.current?.focus();
     const onKey = (e) => {
       if (e.key === 'Escape') onClose();
-      if (images.length > 1 && e.key === 'ArrowRight') setActive((i) => (i + 1) % images.length);
-      if (images.length > 1 && e.key === 'ArrowLeft') setActive((i) => (i - 1 + images.length) % images.length);
+      const el = trackRef.current;
+      if (images.length > 1 && el && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+        const cur = Math.round(el.scrollLeft / el.clientWidth);
+        const next = (cur + (e.key === 'ArrowRight' ? 1 : -1) + images.length) % images.length;
+        el.scrollTo({ left: next * el.clientWidth, behavior: 'smooth' });
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => {
@@ -59,10 +105,33 @@ export default function ProductModal({ product, onClose }) {
         <div className="overflow-y-auto">
           <div className="grid md:grid-cols-2">
             {/* Ảnh */}
-            <div className="bg-paper-dim p-3 sm:p-4">
-              <div className="relative aspect-square overflow-hidden rounded-2xl bg-paper-dim">
+            <div className="flex flex-col items-center bg-paper-dim p-3 sm:p-4">
+              {/* Cùng tỉ lệ 9:16 với ảnh ở thẻ sản phẩm; giới hạn chiều cao để luôn thấy trọn ảnh */}
+              <div className="relative aspect-[9/16] w-full max-w-[calc(78svh*9/16)] overflow-hidden rounded-2xl bg-paper-dim">
                 {images.length > 0 ? (
-                  <img key={images[active]?.src} src={images[active]?.src} alt={product.name} className="size-full object-cover" />
+                  <div
+                    ref={trackRef}
+                    onScroll={handleScroll}
+                    onPointerDown={onPointerDown}
+                    onPointerMove={onPointerMove}
+                    onPointerUp={endDrag}
+                    onPointerLeave={endDrag}
+                    className={`no-scrollbar flex size-full snap-x snap-mandatory overflow-x-auto overscroll-x-contain ${
+                      images.length > 1 ? 'cursor-grab active:cursor-grabbing' : ''
+                    }`}
+                    aria-roledescription="carousel"
+                  >
+                    {images.map((img, i) => (
+                      <img
+                        key={img.src + i}
+                        src={img.src}
+                        alt={`${product.name} — ảnh ${i + 1}`}
+                        draggable={false}
+                        loading={i === 0 ? 'eager' : 'lazy'}
+                        className="size-full shrink-0 snap-center select-none object-cover"
+                      />
+                    ))}
+                  </div>
                 ) : (
                   <div className="flex size-full items-center justify-center text-ink/15"><Flower size={80} weight="duotone" /></div>
                 )}
@@ -83,10 +152,10 @@ export default function ProductModal({ product, onClose }) {
                 )}
               </div>
               {images.length > 1 && (
-                <div className="no-scrollbar mt-3 flex gap-2 overflow-x-auto">
+                <div className="no-scrollbar mt-3 flex w-full max-w-[calc(78svh*9/16)] gap-2 overflow-x-auto">
                   {images.map((img, i) => (
-                    <button key={i} type="button" onClick={() => setActive(i)} aria-label={`Xem ảnh ${i + 1}`} aria-current={i === active}
-                      className={`size-16 shrink-0 overflow-hidden rounded-xl transition ${i === active ? 'ring-2 ring-ink ring-offset-2 ring-offset-paper-dim' : 'opacity-60 hover:opacity-100'}`}>
+                    <button key={i} type="button" onClick={() => scrollToIndex(i)} aria-label={`Xem ảnh ${i + 1}`} aria-current={i === active}
+                      className={`aspect-[9/16] w-12 shrink-0 overflow-hidden rounded-xl transition ${i === active ? 'ring-2 ring-ink ring-offset-2 ring-offset-paper-dim' : 'opacity-60 hover:opacity-100'}`}>
                       <img src={img.src} alt="" className="size-full object-cover" />
                     </button>
                   ))}

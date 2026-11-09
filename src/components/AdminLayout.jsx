@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { Navigate, Outlet, Link, NavLink, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import {
-  CircleNotch, CashRegister, Receipt, Package, Folders, SignOut, List, X, ArrowSquareOut, Flower, TrayArrowDown, Shapes,
+  CircleNotch, CashRegister, Receipt, Package, Folders, SignOut, List, X, ArrowSquareOut, TrayArrowDown, Shapes,
 } from '@phosphor-icons/react';
+import { BrandLogo } from './BrandLogo';
 
 const NAV = [
   { name: 'Bán hàng (POS)', path: '/admin', icon: CashRegister, end: true },
@@ -19,14 +20,8 @@ function Sidebar({ session, onNavigate }) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-16 items-center gap-2.5 px-5">
-        <span className="flex size-9 items-center justify-center rounded-full bg-brick text-white">
-          <Flower size={20} weight="fill" />
-        </span>
-        <div className="leading-tight">
-          <p className="font-display text-lg font-medium">Trạm Hoa Nhỏ</p>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">Quản trị</p>
-        </div>
+      <div className="flex h-16 items-center px-5">
+        <BrandLogo subtitle="Quản trị" />
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-4" aria-label="Quản trị">
@@ -129,7 +124,7 @@ export default function AdminLayout() {
         <button type="button" className="icon-btn text-ink" aria-label="Mở menu" onClick={() => setDrawerOpen(true)}>
           <List size={22} />
         </button>
-        <p className="font-display text-lg">Trạm Hoa Nhỏ</p>
+        <BrandLogo subtitle={null} />
         <span className="size-10" />
       </header>
 

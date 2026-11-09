@@ -17,7 +17,8 @@ export function useProducts() {
       ]);
       if (cancelled) return;
       if (catRes.data) setCategories(catRes.data);
-      if (prodRes.data) setProducts(prodRes.data);
+      // Sản phẩm bị ẩn trong admin thì không hiện cho khách
+      if (prodRes.data) setProducts(prodRes.data.filter((p) => !p.is_hidden));
       setLoading(false);
     }
     fetchData();

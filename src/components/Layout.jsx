@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
-import { List, X, Flower, ChatCircleDots, At } from '@phosphor-icons/react';
+import { List, X, ChatCircleDots, At } from '@phosphor-icons/react';
 import { CONTACT } from '../lib/format';
+import { BrandLogo } from './BrandLogo';
 
 // Các phần của trang chủ
 const SECTIONS = [
@@ -30,14 +31,8 @@ function SectionLink({ id, isHome, onNavigate, ...props }) {
 
 function Logo({ isHome }) {
   return (
-    <SectionLink id="gioi-thieu" isHome={isHome} className="flex items-center gap-2.5">
-      <span className="flex size-9 items-center justify-center rounded-full bg-brick text-white">
-        <Flower size={20} weight="fill" />
-      </span>
-      <span className="leading-none">
-        <span className="block font-display text-xl font-medium tracking-tight">Trạm Hoa Nhỏ</span>
-        <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.25em] text-muted">Hoa kẽm nhung</span>
-      </span>
+    <SectionLink id="gioi-thieu" isHome={isHome} className="flex items-center" aria-label="Trạm Hoa Nhỏ — về đầu trang">
+      <BrandLogo />
     </SectionLink>
   );
 }

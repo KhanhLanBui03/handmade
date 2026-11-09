@@ -8,7 +8,7 @@ const SLIDES = [
     img: '/hero_hydrangea.png',
     alt: 'Bó cẩm tú cầu làm từ kẽm nhung',
     eyebrow: 'Hoa kẽm nhung thủ công',
-    title: (<>Những đóa hoa <em className="text-blush">không bao giờ héo</em></>),
+    title: (<>Những đóa hoa <em className="text-hydrangea">không bao giờ héo</em></>),
     text: 'Từ sợi kẽm nhung mềm mịn, Trạm Hoa Nhỏ uốn nên từng cánh hoa — giữ trọn vẻ đẹp cho góc nhỏ của bạn theo năm tháng.',
   },
   {
@@ -22,7 +22,7 @@ const SLIDES = [
     img: '/product_rose.png',
     alt: 'Hoa hồng đỏ kẽm nhung',
     eyebrow: 'Nhận làm theo yêu cầu',
-    title: (<>Bó hoa <em className="text-blush">của riêng bạn</em></>),
+    title: (<>Bó hoa <em className="text-hydrangea">của riêng bạn</em></>),
     text: 'Chọn loài hoa, màu sắc và kiểu gói bạn thích — mình sẽ làm nên bó hoa đúng như bạn hình dung.',
   },
 ];
