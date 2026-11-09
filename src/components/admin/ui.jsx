@@ -30,7 +30,7 @@ const displayToIso = (text, type) => {
  * không phụ thuộc ngôn ngữ trình duyệt. Gõ tay được, hoặc bấm biểu tượng lịch để chọn.
  * value / onChange dùng chuỗi ISO ("yyyy-mm-dd" hoặc "yyyy-mm").
  */
-export function DateField({ value, onChange, type = 'date', max, id, required, placeholder, className = '', ...rest }) {
+export function DateField({ value, onChange, type = 'date', min, max, id, required, placeholder, className = '', ...rest }) {
   const pickerRef = useRef(null);
   const [draft, setDraft] = useState(null); // chuỗi đang gõ dở
   const shown = draft ?? isoToDisplay(value, type);
@@ -42,7 +42,7 @@ export function DateField({ value, onChange, type = 'date', max, id, required, p
       if (!required) onChange('');
     } else {
       const iso = displayToIso(t, type);
-      if (iso && (!max || iso <= max)) onChange(iso);
+      if (iso && (!max || iso <= max) && (!min || iso >= min)) onChange(iso);
     }
     setDraft(null);
   };
@@ -83,6 +83,7 @@ export function DateField({ value, onChange, type = 'date', max, id, required, p
         ref={pickerRef}
         type={type}
         value={value || ''}
+        min={min}
         max={max}
         onChange={(e) => {
           setDraft(null);

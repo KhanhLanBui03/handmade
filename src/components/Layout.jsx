@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
-import { List, X, ChatCircleDots, At } from '@phosphor-icons/react';
+import { List, X, ChatCircleDots, At, ShoppingBag } from '@phosphor-icons/react';
 import { CONTACT } from '../lib/format';
 import { BrandLogo } from './BrandLogo';
+import CartProvider from './cart/CartProvider';
+import { useCart } from '../lib/cart-context';
 
 // Các phần của trang chủ
 const SECTIONS = [
@@ -81,6 +83,7 @@ export default function Layout() {
     }`;
 
   return (
+    <CartProvider>
     <div className="flex min-h-dvh flex-col overflow-x-clip">
       <header
         className={`sticky top-0 z-40 transition-colors duration-300 ${
@@ -102,9 +105,10 @@ export default function Layout() {
             <a href={CONTACT.zalo} target="_blank" rel="noreferrer" className="btn btn-primary btn-sm hidden sm:inline-flex">
               <ChatCircleDots size={16} weight="bold" /> Nhắn Zalo
             </a>
-            <a href={CONTACT.threads} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm hidden sm:inline-flex text-ink">
+            <a href={CONTACT.threads} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm hidden lg:inline-flex text-ink">
               <At size={16} weight="bold" /> Threads
             </a>
+            <CartButton />
             <button
               type="button"
               className="icon-btn text-ink md:hidden"
@@ -174,5 +178,26 @@ export default function Layout() {
         </div>
       </footer>
     </div>
+    </CartProvider>
+  );
+}
+
+// Nút giỏ hàng trên thanh đầu trang, có số món
+function CartButton() {
+  const { count, openCart } = useCart();
+  return (
+    <button
+      type="button"
+      onClick={openCart}
+      className="icon-btn relative text-ink"
+      aria-label={count ? `Giỏ hàng, ${count} sản phẩm` : 'Giỏ hàng'}
+    >
+      <ShoppingBag size={22} />
+      {count > 0 && (
+        <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-brick px-1 text-[11px] font-semibold text-white">
+          {count > 99 ? '99+' : count}
+        </span>
+      )}
+    </button>
   );
 }

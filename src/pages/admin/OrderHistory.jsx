@@ -210,13 +210,13 @@ export default function OrderHistory() {
                           aria-label="Tên khách"
                           className="input h-9 text-sm"
                         />
-                        <input
-                          type="text"
+                        <textarea
+                          rows={Math.min(5, Math.max(2, draftNote.split('\n').length))}
                           value={draftNote}
                           onChange={(e) => setDraftNote(e.target.value)}
-                          placeholder="Ghi chú (in cuối hóa đơn)"
+                          placeholder="Ghi chú (mỗi ý một dòng)"
                           aria-label="Ghi chú"
-                          className="input h-9 text-sm"
+                          className="input py-2 text-sm sm:col-span-2"
                         />
                         <input
                           type="text"
@@ -323,7 +323,7 @@ export default function OrderHistory() {
                           {order.note && (
                             <p className="flex items-start gap-1">
                               <NotePencil size={14} className="mt-px shrink-0" />
-                              <span><span className="font-medium text-ink">Ghi chú:</span> {order.note}</span>
+                              <span className="whitespace-pre-wrap"><span className="font-medium text-ink">Ghi chú:</span> {order.note}</span>
                             </p>
                           )}
                         </div>

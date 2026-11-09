@@ -12,16 +12,25 @@ import {
   Shapes,
   ListDashes,
   PencilSimple,
+  MagnifyingGlass,
 } from '@phosphor-icons/react';
-import { formatVND, formatQty, shortId } from '../../lib/format';
+import { formatVND, formatQty, normalizeText, shortId } from '../../lib/format';
 import { StatCard, Spinner, EmptyState, DateField } from './ui';
+import Pagination from '../Pagination';
 
 const num = (v) => Number(v) || 0;
+const PER_PAGE = { records: 10, summary: 15 };
 
 // Lịch sử phiếu nhập: lọc theo tháng, thống kê, xem theo phiếu hoặc cộng dồn theo nguyên liệu
 export default function ImportHistory({ imports, loading, onDelete, onEdit, editingId }) {
-  const [month, setMonth] = useState(''); // "2026-11"
-  const [viewMode, setViewMode] = useState('records'); // 'records' | 'summary'
+  const [month, setMonthRaw] = useState(''); // "2026-11"
+  const [viewMode, setViewModeRaw] = useState('records'); // 'records' | 'summary'
+  const [search, setSearchRaw] = useState('');
+  const [page, setPage] = useState(1);
+  // Đổi bộ lọc thì quay về trang 1
+  const setMonth = (v) => { setMonthRaw(v); setPage(1); };
+  const setViewMode = (v) => { setViewModeRaw(v); setPage(1); };
+  const setSearch = (v) => { setSearchRaw(v); setPage(1); };
 
   const visible = useMemo(
     () => (month ? imports.filter((r) => String(r.import_date).startsWith(month)) : imports),
@@ -62,6 +71,29 @@ export default function ImportHistory({ imports, loading, onDelete, onEdit, edit
     });
     return Object.values(map).sort((a, b) => b.totalCost - a.totalCost);
   }, [visible]);
+
+  // Tìm kiếm: theo phiếu (mã, ngày, nơi mua, ghi chú, tên nguyên liệu) hoặc theo tên nguyên liệu
+  const q = normalizeText(search);
+  const list = useMemo(() => {
+    if (viewMode === 'summary') return q ? materialSummary.filter((m) => normalizeText(m.name).includes(q)) : materialSummary;
+    if (!q) return visible;
+    return visible.filter((r) =>
+      normalizeText(
+        [
+          shortId(r.id),
+          format(parseISO(r.import_date), 'dd-MM-yyyy'),
+          r.supplier,
+          r.note,
+          ...(r.items || []).map((i) => i.name),
+        ].join(' '),
+      ).includes(q),
+    );
+  }, [viewMode, q, visible, materialSummary]);
+
+  const perPage = PER_PAGE[viewMode];
+  const totalPages = Math.max(1, Math.ceil(list.length / perPage));
+  const curPage = Math.min(page, totalPages);
+  const pageItems = list.slice((curPage - 1) * perPage, curPage * perPage);
 
   return (
     <section aria-labelledby="import-history-title">
@@ -125,8 +157,28 @@ export default function ImportHistory({ imports, loading, onDelete, onEdit, edit
       </div>
 
       <div className="card overflow-hidden">
+        <div className="flex flex-col gap-2 border-b border-line p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative sm:w-80">
+            <MagnifyingGlass size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={viewMode === 'summary' ? 'Tìm nguyên liệu...' : 'Tìm theo nguyên liệu, nơi mua, ghi chú, mã phiếu...'}
+              aria-label="Tìm trong lịch sử nhập hàng"
+              className="input h-9 pl-9 text-sm"
+            />
+          </div>
+          {!loading && (
+            <span className="text-xs text-muted">
+              {search ? `Tìm thấy ${list.length}` : list.length} {viewMode === 'summary' ? 'nguyên liệu' : 'phiếu nhập'}
+            </span>
+          )}
+        </div>
         {loading ? (
           <Spinner />
+        ) : list.length === 0 && search ? (
+          <EmptyState icon={MagnifyingGlass} title="Không tìm thấy kết quả" text="Thử từ khóa khác, hoặc bỏ lọc tháng." />
         ) : visible.length === 0 ? (
           <EmptyState
             icon={ClockCounterClockwise}
@@ -152,7 +204,7 @@ export default function ImportHistory({ imports, loading, onDelete, onEdit, edit
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
-                {materialSummary.map((item, idx) => (
+                {pageItems.map((item, idx) => (
                   <tr key={idx} className="hover:bg-paper-dim/40 transition-colors">
                     <td className="px-5 py-3.5 font-medium text-ink">
                       <span className="flex items-center gap-2">
@@ -183,7 +235,7 @@ export default function ImportHistory({ imports, loading, onDelete, onEdit, edit
         ) : (
           /* DANH SÁCH THEO PHIẾU NHẬP */
           <ul className="divide-y divide-line">
-            {visible.map((r) => (
+            {pageItems.map((r) => (
               <li
                 key={r.id}
                 className={`flex flex-col gap-4 p-5 md:flex-row md:items-start md:gap-6 ${editingId === r.id ? 'bg-blush/40' : ''}`}
@@ -252,6 +304,12 @@ export default function ImportHistory({ imports, loading, onDelete, onEdit, edit
           </ul>
         )}
       </div>
+
+      {!loading && totalPages > 1 && (
+        <div className="mt-4">
+          <Pagination page={curPage} totalPages={totalPages} onChange={setPage} />
+        </div>
+      )}
     </section>
   );
 }

@@ -1,11 +1,27 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
-import { X, CaretLeft, CaretRight, At, ChatCircleDots, CheckCircle, Flower, PlayCircle } from '@phosphor-icons/react';
-import { CONTACT, formatVND, parsePrice } from '../../lib/format';
+import { X, CaretLeft, CaretRight, At, ChatCircleDots, CheckCircle, Flower, PlayCircle, ShoppingBag } from '@phosphor-icons/react';
+import { CONTACT, formatVND, getCover, parsePrice } from '../../lib/format';
+import { useCart } from '../../lib/cart-context';
+import { Stepper } from '../cart/CartDrawer';
 
 export default function ProductModal({ product, onClose }) {
   const [active, setActive] = useState(0);
+  const [qty, setQty] = useState(1);
+  const [added, setAdded] = useState(false);
+  const cart = useCart();
   const closeRef = useRef(null);
+  const price = parsePrice(product.price);
+
+  const addToCart = () => {
+    cart.add({ id: product.id, name: product.name, price, image: getCover(product) }, qty);
+    setAdded(true);
+  };
+  const buyNow = () => {
+    if (!added) cart.add({ id: product.id, name: product.name, price, image: getCover(product) }, qty);
+    onClose();
+    cart.openCart();
+  };
   const trackRef = useRef(null); // dải ảnh lướt ngang
   const dragRef = useRef(null); // kéo bằng chuột trên máy tính
 
@@ -187,17 +203,36 @@ export default function ProductModal({ product, onClose }) {
                 </div>
               )}
 
-              <div className="mt-8 grid gap-3 pt-2 sm:grid-cols-2 md:mt-auto">
-                <a href={CONTACT.zalo} target="_blank" rel="noreferrer" className="btn btn-accent btn-lg">
-                  <ChatCircleDots weight="bold" /> Nhắn Zalo đặt mẫu
-                </a>
-                <a href={CONTACT.threads} target="_blank" rel="noreferrer" className="btn btn-outline btn-lg">
-                  <At weight="bold" /> Nhắn Threads
-                </a>
+              <div className="mt-8 space-y-3 pt-2 md:mt-auto">
+                {price > 0 ? (
+                  <>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm font-medium text-muted">Số lượng</span>
+                      <Stepper value={qty} onChange={(q) => { setQty(Math.max(1, Math.min(99, q))); setAdded(false); }} label={product.name} />
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <button type="button" onClick={addToCart} className="btn btn-outline btn-lg">
+                        {added ? <CheckCircle weight="fill" className="text-sage" /> : <ShoppingBag weight="bold" />}
+                        {added ? 'Đã thêm vào giỏ' : 'Thêm vào giỏ'}
+                      </button>
+                      <button type="button" onClick={buyNow} className="btn btn-accent btn-lg">
+                        Đặt hàng ngay
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <p className="rounded-xl bg-blush px-4 py-3 text-sm text-brick">Mẫu này báo giá theo yêu cầu — nhắn shop để được tư vấn nhé.</p>
+                )}
+                <div className="flex items-center justify-center gap-4 pt-1 text-sm text-muted">
+                  <span>Hoặc nhắn shop:</span>
+                  <a href={CONTACT.zalo} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-ink hover:text-brick">
+                    <ChatCircleDots weight="bold" /> Zalo
+                  </a>
+                  <a href={CONTACT.threads} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-ink hover:text-brick">
+                    <At weight="bold" /> Threads
+                  </a>
+                </div>
               </div>
-              <p className="mt-3 text-center text-xs text-muted">
-                Shop tư vấn và chốt đơn qua Zalo & Threads · Phản hồi nhanh nhất có thể
-              </p>
             </div>
           </div>
 

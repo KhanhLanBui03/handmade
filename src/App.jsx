@@ -11,6 +11,8 @@ import CategoryManager from './pages/admin/CategoryManager';
 import OrderHistory from './pages/admin/OrderHistory';
 import StockImport from './pages/admin/StockImport';
 import MaterialManager from './pages/admin/MaterialManager';
+import OnlineOrders from './pages/admin/OnlineOrders';
+import SalesStats from './pages/admin/SalesStats';
 
 // Link cũ /product/:id → mở cửa sổ sản phẩm trên trang chính
 function LegacyProductRedirect() {
@@ -35,7 +37,9 @@ export default function App() {
         <Route path="/admin/login" element={<Login />} />
         <Route path="/admin" element={<AdminLayout />}>
           <Route index element={<Dashboard />} />
+          <Route path="online-orders" element={<OnlineOrders />} />
           <Route path="orders" element={<OrderHistory />} />
+          <Route path="stats" element={<SalesStats />} />
           <Route path="imports" element={<StockImport />} />
           <Route path="materials" element={<MaterialManager />} />
           <Route path="products" element={<ProductManager />} />

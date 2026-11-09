@@ -2,21 +2,38 @@ import { useEffect, useState } from 'react';
 import { Navigate, Outlet, Link, NavLink, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import {
-  CircleNotch, CashRegister, Receipt, Package, Folders, SignOut, List, X, ArrowSquareOut, TrayArrowDown, Shapes,
+  CircleNotch, CashRegister, Receipt, Package, Folders, SignOut, List, X, ArrowSquareOut, TrayArrowDown, Shapes, ShoppingBag, ChartBar,
 } from '@phosphor-icons/react';
 import { BrandLogo } from './BrandLogo';
 
 const NAV = [
   { name: 'Bán hàng (POS)', path: '/admin', icon: CashRegister, end: true },
+  { name: 'Đơn online', path: '/admin/online-orders', icon: ShoppingBag, badge: 'newOrders' },
   { name: 'Hóa đơn', path: '/admin/orders', icon: Receipt },
+  { name: 'Thống kê', path: '/admin/stats', icon: ChartBar },
   { name: 'Nhập hàng', path: '/admin/imports', icon: TrayArrowDown },
   { name: 'Nguyên liệu', path: '/admin/materials', icon: Shapes },
   { name: 'Sản phẩm', path: '/admin/products', icon: Package, match: '/admin/product' },
   { name: 'Danh mục', path: '/admin/categories', icon: Folders },
 ];
 
+// Số đơn online mới (chưa xử lý) để hiện trên menu; cập nhật khi chuyển trang
+function useNewOrderCount() {
+  const { pathname } = useLocation();
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    supabase
+      .from('customer_orders')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'new')
+      .then(({ count: c, error }) => setCount(error ? 0 : c || 0));
+  }, [pathname]);
+  return count;
+}
+
 function Sidebar({ session, onNavigate }) {
   const { pathname } = useLocation();
+  const newOrders = useNewOrderCount();
 
   return (
     <div className="flex h-full flex-col">
@@ -45,6 +62,9 @@ function Sidebar({ session, onNavigate }) {
                 <>
                   <item.icon size={20} weight={isActive || forceActive ? 'fill' : 'regular'} />
                   {item.name}
+                  {item.badge === 'newOrders' && newOrders > 0 && (
+                    <span className="ml-auto rounded-full bg-brick px-2 py-0.5 text-xs font-semibold text-white">{newOrders}</span>
+                  )}
                 </>
               )}
             </NavLink>

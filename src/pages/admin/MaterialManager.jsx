@@ -11,12 +11,16 @@ import {
   ClockCounterClockwise,
   Database,
   MagnifyingGlass,
+  CaretDown,
   ArrowSquareOut,
 } from '@phosphor-icons/react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { format, parseISO } from 'date-fns';
-import { formatVND, formatQty } from '../../lib/format';
+import { formatVND, formatQty, normalizeText } from '../../lib/format';
+import Pagination from '../../components/Pagination';
+
+const PER_PAGE = 10;
 import { UNITS, migrateOldUnits } from '../../lib/units';
 import { PageHeader, StatCard, Spinner, EmptyState } from '../../components/admin/ui';
 
@@ -30,7 +34,17 @@ export default function MaterialManager() {
   const [imports, setImports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [missingTable, setMissingTable] = useState(false);
-  const [search, setSearch] = useState('');
+  const [search, setSearchRaw] = useState('');
+  const [page, setPage] = useState(1);
+  const setSearch = (v) => { setSearchRaw(v); setPage(1); };
+  const [openStats, setOpenStats] = useState(() => new Set()); // nguyên liệu đang mở thống kê
+  const toggleStats = (id) =>
+    setOpenStats((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   // Form thêm mới
   const [name, setName] = useState('');
@@ -194,10 +208,14 @@ export default function MaterialManager() {
   };
 
   const filteredMaterials = useMemo(() => {
-    if (!search.trim()) return materials;
-    const q = search.trim().toLowerCase();
-    return materials.filter((m) => m.name.toLowerCase().includes(q) || (m.note && m.note.toLowerCase().includes(q)));
+    const q = normalizeText(search);
+    if (!q) return materials;
+    return materials.filter((m) => normalizeText(`${m.name} ${m.note || ''}`).includes(q));
   }, [materials, search]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredMaterials.length / PER_PAGE));
+  const curPage = Math.min(page, totalPages);
+  const pageMaterials = filteredMaterials.slice((curPage - 1) * PER_PAGE, curPage * PER_PAGE);
 
   return (
     <div>
@@ -326,7 +344,7 @@ export default function MaterialManager() {
             />
           ) : (
             <ul className="divide-y divide-line">
-              {filteredMaterials.map((mat) => {
+              {pageMaterials.map((mat) => {
                 const isEditing = editingId === mat.id;
                 const stats = materialStats[mat.name.trim().toLowerCase()] || {
                   totalQty: 0,
@@ -432,14 +450,23 @@ export default function MaterialManager() {
                             </span>
                           </div>
 
-                          {/* KHỐI THỐNG KÊ CỘNG DỒN TỪ TRƯỚC TỚI NAY */}
-                          <div className="mt-3 rounded-xl border border-line bg-paper-dim/60 p-3 text-xs sm:text-sm">
-                            <div className="flex items-center gap-1.5 font-medium text-muted">
-                              <ClockCounterClockwise size={16} />
-                              <span>Thống kê cộng dồn từ trước tới nay:</span>
-                            </div>
-
-                            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-4">
+                          {/* KHỐI THỐNG KÊ CỘNG DỒN — bấm để ẩn/hiện */}
+                          <button
+                            type="button"
+                            onClick={() => toggleStats(mat.id)}
+                            aria-expanded={openStats.has(mat.id)}
+                            className="mt-3 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 -ml-2 text-xs font-medium text-muted transition-colors hover:bg-ink/5 hover:text-ink sm:text-sm"
+                          >
+                            <ClockCounterClockwise size={16} />
+                            {openStats.has(mat.id) ? 'Ẩn thống kê cộng dồn' : 'Xem thống kê cộng dồn'}
+                            {stats.importCount > 0 && !openStats.has(mat.id) && (
+                              <span className="font-normal">· {stats.importCount} lần nhập</span>
+                            )}
+                            <CaretDown size={14} className={`transition-transform ${openStats.has(mat.id) ? 'rotate-180' : ''}`} />
+                          </button>
+                          {openStats.has(mat.id) && (
+                          <div className="mt-2 rounded-xl border border-line bg-paper-dim/60 p-3 text-xs sm:text-sm">
+                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-4">
                               <div>
                                 <span className="text-muted block text-xs">Tổng đã nhập:</span>
                                 <span className="text-base font-bold text-ink">
@@ -465,6 +492,7 @@ export default function MaterialManager() {
                               </div>
                             </div>
                           </div>
+                          )}
                         </div>
 
                         {/* Các nút thao tác */}
@@ -492,6 +520,12 @@ export default function MaterialManager() {
                 );
               })}
             </ul>
+          )}
+
+          {!loading && totalPages > 1 && (
+            <div className="border-t border-line px-4 py-4">
+              <Pagination page={curPage} totalPages={totalPages} onChange={setPage} />
+            </div>
           )}
         </section>
       </div>
