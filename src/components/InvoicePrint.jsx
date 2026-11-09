@@ -62,10 +62,14 @@ export const InvoicePrint = React.forwardRef(({ order }, ref) => {
         </div>
 
         {/* Thông tin đơn */}
-        <div className="mt-7 grid grid-cols-3 gap-4 rounded-xl px-5 py-4" style={{ background: C.blueSoft }}>
+        <div
+          className={`mt-7 grid gap-4 rounded-xl px-5 py-4 ${order.receive_date ? 'grid-cols-4' : 'grid-cols-3'}`}
+          style={{ background: C.blueSoft }}
+        >
           <Info label="Khách hàng" value={order.customer_name || '—'} />
           <Info label="Ngày lập" value={format(orderDate, 'dd-MM-yyyy')} />
           <Info label="Giờ" value={format(orderDate, 'HH:mm')} />
+          {order.receive_date && <Info label="Ngày nhận" value={format(parseISO(order.receive_date), 'dd-MM-yyyy')} />}
         </div>
 
         {/* Bảng sản phẩm */}

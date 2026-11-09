@@ -37,6 +37,7 @@ export default function OrderHistory() {
   const [draftNote, setDraftNote] = useState('');
   const [draftOther, setDraftOther] = useState('');  // phí khác
   const [draftShip, setDraftShip] = useState('');
+  const [draftDate, setDraftDate] = useState(''); // ngày nhận
   const [savingEdit, setSavingEdit] = useState(false);
 
   const invoice = useInvoiceExport();
@@ -75,6 +76,7 @@ export default function OrderHistory() {
     setDraftNote(order.note || '');
     setDraftOther(order.other_fee ? String(order.other_fee) : '');
     setDraftShip(order.shipping_fee ? String(order.shipping_fee) : '');
+    setDraftDate(order.receive_date || '');
   };
   const cancelEdit = () => {
     setEditingId(null);
@@ -104,6 +106,9 @@ export default function OrderHistory() {
     const otherFee = toNumber(draftOther);
     const total_amount = sumOrder(items) + ship + otherFee;
     const patch = { items, total_amount };
+    // Ngày nhận: chỉ gửi khi có thay đổi (để vẫn sửa được nếu Supabase chưa có cột này)
+    const cur = orders.find((o) => o.id === editingId) || {};
+    if ((draftDate || null) !== (cur.receive_date || null)) patch.receive_date = draftDate || null;
     // Chỉ gửi khi có nội dung (hoặc khi xóa nội dung cũ), để vẫn sửa được nếu Supabase chưa có 2 cột này
     const current = orders.find((o) => o.id === editingId) || {};
     if (draftCustomer.trim() || current.customer_name) patch.customer_name = draftCustomer.trim() || null;
@@ -119,7 +124,7 @@ export default function OrderHistory() {
     setSavingEdit(false);
     if (error) {
       if (error.code === 'PGRST116') return alert(BLOCKED_MSG);
-      if (/customer_name|note|shipping_fee|other_fee/.test(error.message || '')) return alert('Chưa có cột tên khách/tiền ship/ghi chú/phí khác. Chạy file supabase/orders_customer_note.sql trong Supabase rồi thử lại.');
+      if (/customer_name|note|shipping_fee|other_fee|receive_date/.test(error.message || '')) return alert('Chưa có cột tên khách/tiền ship/ghi chú/phí khác/ngày nhận. Chạy file supabase/orders_customer_note.sql trong Supabase rồi thử lại.');
       return alert('Không lưu được: ' + error.message);
     }
     setOrders((list) => list.map((o) => (o.id === data.id ? data : o)));
@@ -196,12 +201,22 @@ export default function OrderHistory() {
                     {!isEditing && order.customer_name && (
                       <p className="mt-1 text-sm font-medium text-ink">{order.customer_name}</p>
                     )}
+                    {!isEditing && order.receive_date && (
+                      <p className="mt-1 text-xs font-medium text-brick">Nhận: {format(parseISO(order.receive_date), 'dd-MM-yyyy')}</p>
+                    )}
                   </div>
 
                   {isEditing ? (
                     /* Chế độ sửa hóa đơn */
                     <div className="min-w-0 flex-1 space-y-2">
                       <div className="grid gap-2 pb-2 sm:grid-cols-2">
+                        <DateField
+                          value={draftDate}
+                          onChange={setDraftDate}
+                          placeholder="Ngày nhận (dd-mm-yyyy)"
+                          aria-label="Ngày nhận"
+                          className="[&_.input]:h-9 [&_.input]:text-sm"
+                        />
                         <input
                           type="text"
                           value={draftCustomer}

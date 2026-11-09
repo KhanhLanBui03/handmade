@@ -84,7 +84,6 @@ export default function OnlineOrders() {
     // Mỗi thông tin một dòng
     const noteParts = [
       order.delivery_method === 'ship' && order.address ? `Giao: ${order.address}` : 'Nhận hàng: Khách tự đến lấy',
-      order.receive_date ? `Ngày nhận: ${format(parseISO(order.receive_date), 'dd-MM-yyyy')}` : null,
       `SĐT: ${order.phone}`,
       order.note ? `Ghi chú: ${order.note}` : null,
     ].filter(Boolean);
@@ -94,12 +93,13 @@ export default function OnlineOrders() {
       customer_name: order.customer_name,
       note: noteParts.join('\n'),
     };
+    if (order.receive_date) invoice.receive_date = order.receive_date;
     const { data: inv, error } = await supabase.from('orders').insert([invoice]).select().single();
     if (error) {
       setBusyId(null);
       return alert(
-        /customer_name|note/.test(error.message || '')
-          ? 'Chưa có cột tên khách/ghi chú cho hóa đơn. Chạy file supabase/orders_customer_note.sql trong Supabase rồi thử lại.'
+        /customer_name|note|receive_date/.test(error.message || '')
+          ? 'Chưa có cột tên khách/ghi chú/ngày nhận cho hóa đơn. Chạy file supabase/orders_customer_note.sql trong Supabase rồi thử lại.'
           : 'Không tạo được hóa đơn: ' + error.message,
       );
     }

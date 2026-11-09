@@ -6,7 +6,7 @@ import {
 } from '@phosphor-icons/react';
 import { supabase } from '../../lib/supabase';
 import { formatVND, getCover, parsePrice, shortId } from '../../lib/format';
-import { PageHeader, StatCard, Spinner, Thumb, EmptyState } from '../../components/admin/ui';
+import { PageHeader, StatCard, Spinner, Thumb, EmptyState, DateField } from '../../components/admin/ui';
 import { useInvoiceExport } from '../../components/admin/useInvoiceExport';
 
 const normalize = (s) =>
@@ -34,6 +34,7 @@ export default function Dashboard() {
   const [customerName, setCustomerName] = useState('');
   const [orderNote, setOrderNote] = useState('');
   const [otherFee, setOtherFee] = useState('');
+  const [receiveDate, setReceiveDate] = useState(''); // ngày khách nhận hàng (không bắt buộc)
   const [shippingFee, setShippingFee] = useState('');
   const [lastOrder, setLastOrder] = useState(null); // hóa đơn vừa lưu, để gửi/in cho khách
   const invoice = useInvoiceExport();
@@ -92,6 +93,7 @@ export default function Dashboard() {
       price: i.price,
     }));
     const order = { total_amount: total, items };
+    if (receiveDate) order.receive_date = receiveDate;
     // Chỉ gửi khi có nhập, để vẫn lưu được nếu Supabase chưa có 2 cột này
     if (customerName.trim()) order.customer_name = customerName.trim();
     if (orderNote.trim()) order.note = orderNote.trim();
@@ -101,7 +103,7 @@ export default function Dashboard() {
     setSaving(false);
 
     if (error) {
-      showToast('error', /customer_name|note|shipping_fee|other_fee/.test(error.message || '') ? 'Chưa có cột tên khách/tiền ship/ghi chú/phí khác. Chạy file supabase/orders_customer_note.sql trong Supabase rồi thử lại.' : 'Lỗi lưu đơn hàng: ' + error.message);
+      showToast('error', /customer_name|note|shipping_fee|other_fee|receive_date/.test(error.message || '') ? 'Chưa có cột tên khách/tiền ship/ghi chú/phí khác/ngày nhận. Chạy file supabase/orders_customer_note.sql trong Supabase rồi thử lại.' : 'Lỗi lưu đơn hàng: ' + error.message);
     } else {
       showToast('success', `Đã lưu hóa đơn ${formatVND(total)}`);
       setOrderItems({});
@@ -109,6 +111,7 @@ export default function Dashboard() {
       setCustomerName('');
       setOrderNote('');
       setOtherFee('');
+      setReceiveDate('');
       setShippingFee('');
       loadTodayStats().then(setToday);
     }
@@ -251,6 +254,12 @@ export default function Dashboard() {
             )}
 
             <div className="space-y-3 border-t border-line px-5 py-4">
+              <div>
+                <label htmlFor="receive-date" className="label">
+                  Ngày nhận <span className="font-normal text-muted">(không bắt buộc)</span>
+                </label>
+                <DateField id="receive-date" value={receiveDate} onChange={setReceiveDate} />
+              </div>
               <div>
                 <label htmlFor="customer-name" className="label">
                   Tên khách <span className="font-normal text-muted">(không bắt buộc)</span>
