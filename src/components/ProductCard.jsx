@@ -1,5 +1,6 @@
 import { ArrowUpRight, Flower } from '@phosphor-icons/react';
-import { formatVND, getCover, parsePrice } from '../lib/format';
+import { formatVND, getCover } from '../lib/format';
+import { hasPriceRange, minPrice } from '../lib/variants';
 
 export function ProductCard({ product, onOpen }) {
   const cover = getCover(product);
@@ -37,7 +38,10 @@ export function ProductCard({ product, onOpen }) {
         <h3 className="line-clamp-2 font-medium leading-snug text-ink transition-colors group-hover:text-brick">
           {product.name}
         </h3>
-        <p className="shrink-0 font-semibold text-ink">{formatVND(parsePrice(product.price))}</p>
+        <p className="shrink-0 font-semibold text-ink">
+          {hasPriceRange(product) && <span className="mr-1 text-xs font-normal text-muted">Từ</span>}
+          {formatVND(minPrice(product))}
+        </p>
       </div>
     </button>
   );

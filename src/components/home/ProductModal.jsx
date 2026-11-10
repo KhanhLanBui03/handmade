@@ -4,6 +4,16 @@ import { X, CaretLeft, CaretRight, At, ChatCircleDots, CheckCircle, Flower, Play
 import { CONTACT, formatVND, getCover, parsePrice } from '../../lib/format';
 import { useCart } from '../../lib/cart-context';
 import { Stepper } from '../cart/CartDrawer';
+import { getVariants } from '../../lib/variants';
+
+// Khóa cuộn trang khi mở cửa sổ; trả về hàm mở khóa
+function lockPageScroll() {
+  const prev = document.body.style.overflow;
+  document.body.style.overflow = 'hidden';
+  return () => {
+    document.body.style.overflow = prev;
+  };
+}
 
 export default function ProductModal({ product, onClose }) {
   const [active, setActive] = useState(0);
@@ -11,14 +21,26 @@ export default function ProductModal({ product, onClose }) {
   const [added, setAdded] = useState(false);
   const cart = useCart();
   const closeRef = useRef(null);
-  const price = parsePrice(product.price);
+  const variants = getVariants(product);
+  const [vIdx, setVIdx] = useState(0); // phân loại đang chọn
+  const variant = variants[vIdx] || null;
+  const price = variant ? variant.price : parsePrice(product.price);
 
+  // Món bỏ vào giỏ: mỗi phân loại là một dòng riêng trong giỏ
+  const cartItem = () => ({
+    id: variant ? `${product.id}::${variant.name}` : product.id,
+    product_id: product.id,
+    variant: variant?.name || null,
+    name: variant ? `${product.name} — ${variant.name}` : product.name,
+    price,
+    image: variant?.image || getCover(product),
+  });
   const addToCart = () => {
-    cart.add({ id: product.id, name: product.name, price, image: getCover(product) }, qty);
+    cart.add(cartItem(), qty);
     setAdded(true);
   };
   const buyNow = () => {
-    if (!added) cart.add({ id: product.id, name: product.name, price, image: getCover(product) }, qty);
+    if (!added) cart.add(cartItem(), qty);
     onClose();
     cart.openCart();
   };
@@ -36,6 +58,15 @@ export default function ProductModal({ product, onClose }) {
     const idx = (i + images.length) % images.length;
     el.scrollTo({ left: idx * el.clientWidth, behavior: smooth ? 'smooth' : 'auto' });
   };
+  // Chọn phân loại → đổi giá và nhảy tới ảnh gắn với phân loại đó
+  const chooseVariant = (i) => {
+    setVIdx(i);
+    setAdded(false);
+    const img = variants[i]?.image;
+    const idx = img ? images.findIndex((m) => m.src === img) : -1;
+    if (idx >= 0) scrollToIndex(idx);
+  };
+
   // Ảnh đang hiện, đọc thẳng từ vị trí cuộn
   const currentIndex = () => {
     const el = trackRef.current;
@@ -48,6 +79,12 @@ export default function ProductModal({ product, onClose }) {
     const el = trackRef.current;
     if (!el) return;
     const i = Math.round(el.scrollLeft / el.clientWidth);
+    // Lướt tới ảnh gắn với một phân loại → tự chọn phân loại đó
+    const vi = variants.findIndex((v) => v.image && v.image === images[i]?.src);
+    if (vi >= 0 && vi !== vIdx) {
+      setVIdx(vi);
+      setAdded(false);
+    }
     if (i !== active && i >= 0 && i < images.length) setActive(i);
   };
 
@@ -72,8 +109,7 @@ export default function ProductModal({ product, onClose }) {
 
   // Khóa cuộn trang, focus nút đóng, Esc để đóng, phím mũi tên đổi ảnh
   useEffect(() => {
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const unlock = lockPageScroll();
     closeRef.current?.focus();
     const onKey = (e) => {
       if (e.key === 'Escape') onClose();
@@ -86,7 +122,7 @@ export default function ProductModal({ product, onClose }) {
     };
     window.addEventListener('keydown', onKey);
     return () => {
-      document.body.style.overflow = prevOverflow;
+      unlock();
       window.removeEventListener('keydown', onKey);
     };
   }, [onClose, images.length]);
@@ -183,7 +219,35 @@ export default function ProductModal({ product, onClose }) {
             <div className="flex flex-col p-6 sm:p-8">
               {category && <p className="eyebrow">{category}</p>}
               <h2 id="product-title" className="mt-2 pr-10 font-display text-3xl leading-tight tracking-tight sm:text-4xl">{product.name}</h2>
-              <p className="mt-4 text-2xl font-semibold text-brick">{formatVND(parsePrice(product.price))}</p>
+              <p className="mt-4 text-2xl font-semibold text-brick" aria-live="polite">{formatVND(price)}</p>
+
+              {variants.length > 0 && (
+                <div className="mt-5">
+                  <p className="text-sm font-medium">
+                    Phân loại: <span className="text-muted">{variant?.name}</span>
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2" role="radiogroup" aria-label="Chọn phân loại">
+                    {variants.map((v, i) => (
+                      <button
+                        key={v.name}
+                        type="button"
+                        role="radio"
+                        aria-checked={i === vIdx}
+                        onClick={() => chooseVariant(i)}
+                        className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm transition-colors ${
+                          i === vIdx ? 'border-brick bg-blush text-brick ring-1 ring-brick' : 'border-line bg-surface text-ink hover:border-ink/30'
+                        }`}
+                      >
+                        {v.image && <img src={v.image} alt="" className="size-8 rounded-md object-cover" />}
+                        <span>
+                          <span className="block font-semibold leading-tight">{v.name}</span>
+                          <span className={`text-xs ${i === vIdx ? 'text-brick' : 'text-muted'}`}>{formatVND(v.price)}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <p className="mt-5 whitespace-pre-wrap leading-relaxed text-muted">
                 {product.description || 'Chưa có mô tả cho sản phẩm này.'}

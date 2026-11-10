@@ -209,7 +209,7 @@ function CheckoutStep({ onDone }) {
         address: method === 'ship' ? address.trim() : null,
         receive_date: receiveDate || null,
         note: note.trim() || null,
-        items: items.map((i) => ({ product_id: i.id, product_name: i.name, quantity: i.quantity, price: i.price })),
+        items: items.map((i) => ({ product_id: i.product_id ?? i.id, product_name: i.name, variant: i.variant || null, quantity: i.quantity, price: i.price })),
         total_amount: total,
       },
     ]);

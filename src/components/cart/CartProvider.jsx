@@ -30,7 +30,18 @@ export default function CartProvider({ children }) {
     setItems((list) => {
       const found = list.find((i) => i.id === product.id);
       if (found) return list.map((i) => (i.id === product.id ? { ...i, quantity: Math.min(99, i.quantity + quantity) } : i));
-      return [...list, { id: product.id, name: product.name, price: product.price, image: product.image || null, quantity }];
+      return [
+        ...list,
+        {
+          id: product.id, // mã dòng trong giỏ (sản phẩm + phân loại)
+          product_id: product.product_id ?? product.id,
+          variant: product.variant || null,
+          name: product.name,
+          price: product.price,
+          image: product.image || null,
+          quantity,
+        },
+      ];
     });
   }, []);
 

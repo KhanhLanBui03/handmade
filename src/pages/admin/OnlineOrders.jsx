@@ -18,8 +18,10 @@ import {
   ShoppingBag,
 } from '@phosphor-icons/react';
 import { supabase } from '../../lib/supabase';
-import { formatVND, shortId } from '../../lib/format';
-import { PageHeader, Spinner, EmptyState } from '../../components/admin/ui';
+import { insertOrder } from '../../lib/saveOrder';
+import ProductPeek from '../../components/admin/ProductPeek';
+import { formatVND, getCover, shortId } from '../../lib/format';
+import { PageHeader, Spinner, EmptyState, Thumb } from '../../components/admin/ui';
 
 const STATUS = {
   new: { label: 'Mới', cls: 'bg-sunflower/20 text-[#8a5a00]' },
@@ -47,6 +49,20 @@ export default function OnlineOrders() {
   const [missingTable, setMissingTable] = useState(false);
   const [tab, setTab] = useState('new');
   const [busyId, setBusyId] = useState(null);
+  const [products, setProducts] = useState([]);
+  const [peek, setPeek] = useState(null); // { product, name } đang xem chi tiết
+
+  // Sản phẩm để hiện ảnh & mở chi tiết (lấy đủ cột, kể cả danh mục)
+  useEffect(() => {
+    supabase
+      .from('products')
+      .select('*, categories(name)')
+      .then(({ data }) => setProducts(data || []));
+  }, []);
+  const productOf = (it) =>
+    products.find((p) => String(p.id) === String(it.product_id)) ||
+    products.find((p) => p.name.trim().toLowerCase() === String(it.product_name || '').trim().toLowerCase()) ||
+    null;
 
   useEffect(() => {
     supabase
@@ -94,7 +110,7 @@ export default function OnlineOrders() {
       note: noteParts.join('\n'),
     };
     if (order.receive_date) invoice.receive_date = order.receive_date;
-    const { data: inv, error } = await supabase.from('orders').insert([invoice]).select().single();
+    const { data: inv, error, movedDateToNote } = await insertOrder(invoice);
     if (error) {
       setBusyId(null);
       return alert(
@@ -112,6 +128,7 @@ export default function OnlineOrders() {
     setBusyId(null);
     if (err2) return alert('Đã tạo hóa đơn nhưng chưa cập nhật được trạng thái đơn: ' + err2.message);
     replace(data);
+    if (movedDateToNote) alert('Supabase chưa có cột ngày nhận nên ngày nhận đã được ghi vào phần ghi chú. Chạy file supabase/orders_customer_note.sql để có cột riêng.');
   };
 
   const remove = async (order) => {
@@ -221,15 +238,27 @@ export default function OnlineOrders() {
 
                   {/* Sản phẩm */}
                   <div>
-                    <ul className="space-y-1.5 text-sm">
-                      {(o.items || []).map((it, idx) => (
-                        <li key={idx} className="flex justify-between gap-4">
-                          <span>
-                            <span className="font-semibold text-muted">{it.quantity}×</span> {it.product_name}
-                          </span>
-                          <span className="shrink-0 text-muted">{formatVND(it.quantity * it.price)}</span>
-                        </li>
-                      ))}
+                    <ul className="space-y-2 text-sm">
+                      {(o.items || []).map((it, idx) => {
+                        const prod = productOf(it);
+                        return (
+                          <li key={idx} className="flex items-center justify-between gap-4">
+                            <button
+                              type="button"
+                              onClick={() => setPeek({ product: prod, name: it.product_name })}
+                              className="group flex min-w-0 items-center gap-3 rounded-lg text-left"
+                              title="Xem chi tiết sản phẩm"
+                            >
+                              <Thumb src={prod ? getCover(prod) : null} className="size-11 transition group-hover:ring-2 group-hover:ring-brick" />
+                              <span className="min-w-0">
+                                <span className="font-semibold text-muted">{it.quantity}×</span>{' '}
+                                <span className="font-medium underline-offset-2 group-hover:text-brick group-hover:underline">{it.product_name}</span>
+                              </span>
+                            </button>
+                            <span className="shrink-0 text-muted">{formatVND(it.quantity * it.price)}</span>
+                          </li>
+                        );
+                      })}
                     </ul>
                     <div className="mt-3 flex items-center justify-between border-t border-line pt-3">
                       <span className="text-sm text-muted">Tổng tiền hàng</span>
@@ -280,6 +309,8 @@ export default function OnlineOrders() {
           })}
         </ul>
       )}
+
+      {peek && <ProductPeek product={peek.product} fallbackName={peek.name} onClose={() => setPeek(null)} />}
     </div>
   );
 }

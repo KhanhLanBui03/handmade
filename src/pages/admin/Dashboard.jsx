@@ -5,7 +5,9 @@ import {
   CurrencyCircleDollar, Receipt, Package, WarningCircle, ShareNetwork, Printer,
 } from '@phosphor-icons/react';
 import { supabase } from '../../lib/supabase';
-import { formatVND, getCover, parsePrice, shortId } from '../../lib/format';
+import { insertOrder } from '../../lib/saveOrder';
+import { sellablesOf } from '../../lib/variants';
+import { formatVND, shortId } from '../../lib/format';
 import { PageHeader, StatCard, Spinner, Thumb, EmptyState, DateField } from '../../components/admin/ui';
 import { useInvoiceExport } from '../../components/admin/useInvoiceExport';
 
@@ -63,8 +65,9 @@ export default function Dashboard() {
   const cart = useMemo(
     () =>
       products
-        .filter((p) => orderItems[p.id] > 0)
-        .map((p) => ({ product: p, quantity: orderItems[p.id], price: parsePrice(p.price) })),
+        .flatMap(sellablesOf)
+        .filter((s) => orderItems[s.key] > 0)
+        .map((s) => ({ ...s, quantity: orderItems[s.key] })),
     [products, orderItems],
   );
   const subtotal = cart.reduce((s, i) => s + i.quantity * i.price, 0);
@@ -75,7 +78,9 @@ export default function Dashboard() {
 
   const visible = useMemo(() => {
     const q = normalize(search.trim());
-    return q ? products.filter((p) => normalize(p.name).includes(q)) : products;
+    // Mỗi phân loại là một dòng riêng (giá riêng)
+    const all = products.flatMap(sellablesOf);
+    return q ? all.filter((s) => normalize(s.label).includes(q)) : all;
   }, [products, search]);
 
   const showToast = (type, text) => {
@@ -88,7 +93,8 @@ export default function Dashboard() {
     setSaving(true);
     const items = cart.map((i) => ({
       product_id: i.product.id,
-      product_name: i.product.name,
+      product_name: i.label,
+      variant: i.variant,
       quantity: i.quantity,
       price: i.price,
     }));
@@ -99,13 +105,13 @@ export default function Dashboard() {
     if (orderNote.trim()) order.note = orderNote.trim();
     if (other > 0) order.other_fee = other;
     if (ship > 0) order.shipping_fee = ship;
-    const { data: saved, error } = await supabase.from('orders').insert([order]).select().single();
+    const { data: saved, error, movedDateToNote } = await insertOrder(order);
     setSaving(false);
 
     if (error) {
       showToast('error', /customer_name|note|shipping_fee|other_fee|receive_date/.test(error.message || '') ? 'Chưa có cột tên khách/tiền ship/ghi chú/phí khác/ngày nhận. Chạy file supabase/orders_customer_note.sql trong Supabase rồi thử lại.' : 'Lỗi lưu đơn hàng: ' + error.message);
     } else {
-      showToast('success', `Đã lưu hóa đơn ${formatVND(total)}`);
+      showToast('success', movedDateToNote ? `Đã lưu hóa đơn (ngày nhận ghi trong ghi chú)` : `Đã lưu hóa đơn ${formatVND(total)}`);
       setOrderItems({});
       setLastOrder(saved);
       setCustomerName('');
@@ -151,12 +157,13 @@ export default function Dashboard() {
               <EmptyState icon={Package} title="Không có sản phẩm phù hợp" />
             ) : (
               <ul className="divide-y divide-line">
-                {visible.map((p) => {
-                  const q = orderItems[p.id] || 0;
-                  const price = parsePrice(p.price);
+                {visible.map((s) => {
+                  const p = { id: s.key, name: s.label };
+                  const q = orderItems[s.key] || 0;
+                  const price = s.price;
                   return (
                     <li key={p.id} className={`flex items-center gap-3 px-4 py-3 transition-colors ${q > 0 ? 'bg-blush/40' : ''}`}>
-                      <Thumb src={getCover(p)} />
+                      <Thumb src={s.image} />
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-medium">{p.name}</p>
                         <p className="text-sm text-muted">{formatVND(price)}</p>
@@ -242,9 +249,9 @@ export default function Dashboard() {
             ) : (
               <ul className="max-h-[50vh] divide-y divide-line overflow-y-auto px-5">
                 {cart.map((i) => (
-                  <li key={i.product.id} className="flex items-start justify-between gap-3 py-3 text-sm">
+                  <li key={i.key} className="flex items-start justify-between gap-3 py-3 text-sm">
                     <div className="min-w-0">
-                      <p className="font-medium">{i.product.name}</p>
+                      <p className="font-medium">{i.label}</p>
                       <p className="text-muted">{i.quantity} × {formatVND(i.price)}</p>
                     </div>
                     <p className="shrink-0 font-semibold">{formatVND(i.quantity * i.price)}</p>
