@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { startOfDay, endOfDay } from 'date-fns';
 import {
   CheckCircle, CircleNotch, Minus, Plus, MagnifyingGlass, Trash, ShoppingBagOpen,
-  CurrencyCircleDollar, Receipt, Package, WarningCircle, ShareNetwork, Printer,
+  CurrencyCircleDollar, Receipt, Package, WarningCircle, ShareNetwork, Printer, TrendUp,
 } from '@phosphor-icons/react';
 import { supabase } from '../../lib/supabase';
 import { insertOrder } from '../../lib/saveOrder';
@@ -14,15 +14,27 @@ import { useInvoiceExport } from '../../components/admin/useInvoiceExport';
 const normalize = (s) =>
   String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd').toLowerCase();
 
-async function loadTodayStats() {
+async function loadTodayStats(productsList = []) {
   const now = new Date();
   const { data } = await supabase
     .from('orders')
-    .select('total_amount')
+    .select('total_amount, items')
     .gte('created_at', startOfDay(now).toISOString())
     .lte('created_at', endOfDay(now).toISOString());
   const list = data || [];
-  return { count: list.length, revenue: list.reduce((s, o) => s + Number(o.total_amount || 0), 0) };
+  const costMap = {};
+  (productsList || []).forEach((p) => {
+    costMap[p.id] = Number(p.cost || 0);
+  });
+  let totalCost = 0;
+  list.forEach((o) => {
+    (o.items || []).forEach((it) => {
+      totalCost += Number(it.quantity || 0) * (costMap[it.product_id] || 0);
+    });
+  });
+  const revenue = list.reduce((s, o) => s + Number(o.total_amount || 0), 0);
+  const profit = revenue - totalCost;
+  return { count: list.length, revenue, profit, cost: totalCost };
 }
 
 export default function Dashboard() {
@@ -32,7 +44,7 @@ export default function Dashboard() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null); // { type, text }
   const [search, setSearch] = useState('');
-  const [today, setToday] = useState({ count: 0, revenue: 0 });
+  const [today, setToday] = useState({ count: 0, revenue: 0, profit: 0, cost: 0 });
   const [customerName, setCustomerName] = useState('');
   const [orderNote, setOrderNote] = useState('');
   const [otherFee, setOtherFee] = useState('');
@@ -44,11 +56,15 @@ export default function Dashboard() {
   useEffect(() => {
     async function fetchData() {
       const { data } = await supabase.from('products').select('*').order('name');
-      if (data) setProducts(data);
+      if (data) {
+        setProducts(data);
+        loadTodayStats(data).then(setToday);
+      } else {
+        loadTodayStats([]).then(setToday);
+      }
       setLoading(false);
     }
     fetchData();
-    loadTodayStats().then(setToday);
   }, []);
 
   const setQty = (id, value) => {
@@ -119,7 +135,7 @@ export default function Dashboard() {
       setOtherFee('');
       setReceiveDate('');
       setShippingFee('');
-      loadTodayStats().then(setToday);
+      loadTodayStats(products).then(setToday);
     }
   };
 
@@ -127,10 +143,17 @@ export default function Dashboard() {
     <div>
       <PageHeader title="Bán hàng" description="Chọn sản phẩm và số lượng, sau đó lưu hóa đơn." />
 
-      <div className="mb-8 grid gap-4 sm:grid-cols-3">
-        <StatCard icon={CurrencyCircleDollar} label="Doanh thu hôm nay" value={formatVND(today.revenue)} />
-        <StatCard icon={Receipt} label="Hóa đơn hôm nay" value={today.count} tone="sage" />
-        <StatCard icon={Package} label="Sản phẩm đang bán" value={products.length} tone="sun" />
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard icon={CurrencyCircleDollar} label="Doanh thu hôm nay" value={formatVND(today.revenue)} tone="brick" />
+        <StatCard
+          icon={TrendUp}
+          label="Thu nhập hôm nay"
+          value={formatVND(today.profit || 0)}
+          tone="sage"
+          hint={`Lợi nhuận (vốn: ${formatVND(today.cost || 0)})`}
+        />
+        <StatCard icon={Receipt} label="Hóa đơn hôm nay" value={today.count} tone="sun" />
+        <StatCard icon={Package} label="Sản phẩm đang bán" value={products.length} />
       </div>
 
       {loading ? (

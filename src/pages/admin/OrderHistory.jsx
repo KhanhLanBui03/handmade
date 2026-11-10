@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { format, parseISO, startOfDay, endOfDay } from 'date-fns';
 import {
   Printer,
@@ -13,6 +13,9 @@ import {
   CircleNotch,
   Plus,
   NotePencil,
+  TrendUp,
+  ListDashes,
+  ChartLineUp,
 } from '@phosphor-icons/react';
 import { supabase } from '../../lib/supabase';
 import { formatVND, parsePrice, shortId } from '../../lib/format';
@@ -29,6 +32,7 @@ export default function OrderHistory() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dateFilter, setDateFilter] = useState('');
+  const [viewMode, setViewMode] = useState('orders'); // 'orders' | 'products'
 
   // Sửa hóa đơn
   const [editingId, setEditingId] = useState(null);
@@ -45,7 +49,7 @@ export default function OrderHistory() {
   useEffect(() => {
     supabase
       .from('products')
-      .select('id, name, price')
+      .select('id, name, price, cost')
       .order('name')
       .then(({ data }) => setProducts(data || []));
   }, []);
@@ -65,9 +69,58 @@ export default function OrderHistory() {
     fetchOrders();
   }, [dateFilter]);
 
+  // Bảng tra giá vốn của từng sản phẩm
+  const productCostMap = useMemo(() => {
+    const map = {};
+    products.forEach((p) => {
+      map[p.id] = Number(p.cost || 0);
+    });
+    return map;
+  }, [products]);
+
+  // Tính giá vốn cho một đơn hàng
+  const getOrderCost = (order) => {
+    return (order.items || []).reduce((sum, item) => {
+      const unitCost = productCostMap[item.product_id] || 0;
+      return sum + Number(item.quantity || 0) * unitCost;
+    }, 0);
+  };
 
   const revenue = orders.reduce((s, o) => s + Number(o.total_amount || 0), 0);
+  const totalCost = orders.reduce((s, o) => s + getOrderCost(o), 0);
+  const profit = revenue - totalCost;
+  const profitMargin = revenue > 0 ? Math.round((profit / revenue) * 100) : 0;
   const units = orders.reduce((s, o) => s + (o.items || []).reduce((a, i) => a + Number(i.quantity || 0), 0), 0);
+
+  // Thống kê lợi nhuận theo từng món hoa đã bán
+  const productProfitSummary = useMemo(() => {
+    const map = {};
+    orders.forEach((o) => {
+      (o.items || []).forEach((it) => {
+        const id = it.product_id || it.product_name;
+        if (!map[id]) {
+          map[id] = {
+            id,
+            name: it.product_name,
+            quantity: 0,
+            revenue: 0,
+            cost: 0,
+            profit: 0,
+          };
+        }
+        const qty = Number(it.quantity || 0);
+        const itemRev = qty * Number(it.price || 0);
+        const unitCost = productCostMap[it.product_id] || 0;
+        const itemCost = qty * unitCost;
+
+        map[id].quantity += qty;
+        map[id].revenue += itemRev;
+        map[id].cost += itemCost;
+        map[id].profit += (itemRev - itemCost);
+      });
+    });
+    return Object.values(map).sort((a, b) => b.profit - a.profit);
+  }, [orders, productCostMap]);
 
   const startEdit = (order) => {
     setEditingId(order.id);
@@ -150,31 +203,61 @@ export default function OrderHistory() {
   return (
     <div>
       <PageHeader
-        title="Hóa đơn"
+        title="Hóa đơn & Thu nhập"
         description={
           dateFilter
-            ? `Các hóa đơn ngày ${format(new Date(`${dateFilter}T00:00:00`), 'dd-MM-yyyy')}`
-            : 'Tất cả hóa đơn đã lưu'
+            ? `Số liệu ngày ${format(new Date(`${dateFilter}T00:00:00`), 'dd-MM-yyyy')}`
+            : 'Tổng hợp tất cả hóa đơn, doanh thu, chi phí và lợi nhuận bán hàng.'
         }
         actions={
-          <div className="flex items-center gap-2">
-            <label className="sr-only" htmlFor="order-date">
-              Lọc theo ngày
-            </label>
-            <DateField id="order-date" value={dateFilter} onChange={setDateFilter} className="w-44" />
-            {dateFilter && (
-              <button type="button" onClick={() => setDateFilter('')} className="btn btn-ghost btn-sm">
-                <X size={14} weight="bold" /> Bỏ lọc
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex rounded-xl border border-line bg-paper p-1 text-xs font-medium">
+              <button
+                type="button"
+                onClick={() => setViewMode('orders')}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition-colors ${
+                  viewMode === 'orders' ? 'bg-ink text-paper' : 'text-muted hover:text-ink'
+                }`}
+              >
+                <ListDashes size={16} /> Theo hóa đơn
               </button>
-            )}
+              <button
+                type="button"
+                onClick={() => setViewMode('products')}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition-colors ${
+                  viewMode === 'products' ? 'bg-ink text-paper' : 'text-muted hover:text-ink'
+                }`}
+              >
+                <ChartLineUp size={16} /> Lợi nhuận theo món
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label className="sr-only" htmlFor="order-date">
+                Lọc theo ngày
+              </label>
+              <DateField id="order-date" value={dateFilter} onChange={setDateFilter} className="w-44" />
+              {dateFilter && (
+                <button type="button" onClick={() => setDateFilter('')} className="btn btn-ghost btn-sm">
+                  <X size={14} weight="bold" /> Bỏ lọc
+                </button>
+              )}
+            </div>
           </div>
         }
       />
 
-      <div className="mb-8 grid gap-4 sm:grid-cols-3">
-        <StatCard icon={CurrencyCircleDollar} label="Doanh thu" value={formatVND(revenue)} />
-        <StatCard icon={Receipt} label="Số hóa đơn" value={orders.length} tone="sage" />
-        <StatCard icon={Package} label="Sản phẩm đã bán" value={units} tone="sun" />
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard icon={CurrencyCircleDollar} label="Doanh thu" value={formatVND(revenue)} tone="brick" />
+        <StatCard icon={Receipt} label="Chi phí vốn" value={formatVND(totalCost)} tone="sun" hint="Tổng vốn nguyên liệu" />
+        <StatCard
+          icon={TrendUp}
+          label="Thu nhập (Lợi nhuận)"
+          value={formatVND(profit)}
+          tone="sage"
+          hint={revenue > 0 ? `Lãi: ${profitMargin}% doanh thu` : undefined}
+        />
+        <StatCard icon={Package} label="Sản phẩm đã bán" value={`${units} món`} hint={`${orders.length} hóa đơn`} />
       </div>
 
       <div className="card overflow-hidden">
@@ -186,6 +269,45 @@ export default function OrderHistory() {
             title="Không tìm thấy hóa đơn nào"
             text={dateFilter ? 'Thử chọn ngày khác.' : 'Hóa đơn sẽ xuất hiện sau khi bạn lưu ở màn hình Bán hàng.'}
           />
+        ) : viewMode === 'products' ? (
+          /* BẢNG TỔNG KẾT THU NHẬP & LỢI NHUẬN THEO TỪNG MÓN */
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-line bg-paper-dim/60 text-xs uppercase tracking-wider text-muted">
+                <tr>
+                  <th className="px-5 py-3.5 font-semibold">Tên sản phẩm</th>
+                  <th className="px-4 py-3.5 font-semibold text-center">Đã bán</th>
+                  <th className="px-4 py-3.5 font-semibold text-right">Doanh thu</th>
+                  <th className="px-4 py-3.5 font-semibold text-right">Chi phí vốn</th>
+                  <th className="px-5 py-3.5 font-semibold text-right">Thu nhập (Tiền lời)</th>
+                  <th className="px-4 py-3.5 font-semibold text-center">Tỷ suất lãi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {productProfitSummary.map((item, idx) => {
+                  const margin = item.revenue > 0 ? Math.round((item.profit / item.revenue) * 100) : 0;
+                  return (
+                    <tr key={idx} className="hover:bg-paper-dim/40 transition-colors">
+                      <td className="px-5 py-3.5 font-medium text-ink">{item.name}</td>
+                      <td className="px-4 py-3.5 text-center font-bold text-ink">
+                        {item.quantity}
+                      </td>
+                      <td className="px-4 py-3.5 text-right font-medium text-ink">{formatVND(item.revenue)}</td>
+                      <td className="px-4 py-3.5 text-right text-muted">{item.cost > 0 ? formatVND(item.cost) : '0 đ'}</td>
+                      <td className="px-5 py-3.5 text-right font-bold text-emerald-600 text-base">
+                        +{formatVND(item.profit)}
+                      </td>
+                      <td className="px-4 py-3.5 text-center">
+                        <span className="badge bg-emerald-50 text-emerald-700 font-bold">
+                          +{margin}%
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <ul className="divide-y divide-line">
             {orders.map((order) => {
@@ -347,9 +469,16 @@ export default function OrderHistory() {
                   )}
 
                   <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-4 md:w-48 md:flex-col md:items-end md:border-0 md:pt-0">
-                    <p className="text-lg font-semibold text-brick">
-                      {formatVND(isEditing ? sumOrder(draftItems) + toNumber(draftShip) + toNumber(draftOther) : order.total_amount)}
-                    </p>
+                    <div className="text-left md:text-right">
+                      <p className="text-lg font-semibold text-brick">
+                        {formatVND(isEditing ? sumOrder(draftItems) + toNumber(draftShip) + toNumber(draftOther) : order.total_amount)}
+                      </p>
+                      {!isEditing && getOrderCost(order) > 0 && (
+                        <p className="text-xs text-muted">
+                          Vốn: {formatVND(getOrderCost(order))} · <span className="font-semibold text-emerald-600">Lời: +{formatVND(order.total_amount - getOrderCost(order))}</span>
+                        </p>
+                      )}
+                    </div>
                     {isEditing ? (
                       <div className="flex gap-1">
                         <button type="button" onClick={cancelEdit} disabled={savingEdit} className="btn btn-ghost btn-sm">

@@ -111,26 +111,48 @@ export default function ProductManager() {
                   <th className="px-5 py-3 font-semibold">Sản phẩm</th>
                   <th className="px-5 py-3 font-semibold">Danh mục</th>
                   <th className="px-5 py-3 font-semibold">Ảnh/Video</th>
-                  <th className="px-5 py-3 text-right font-semibold">Giá</th>
+                  <th className="px-5 py-3 text-right font-semibold">Giá bán</th>
+                  <th className="px-5 py-3 text-right font-semibold">Vốn & Lời</th>
                   <th className="px-5 py-3 text-right font-semibold"><span className="sr-only">Thao tác</span></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
-                {visible.map((p) => (
-                  <tr key={p.id} className="transition-colors hover:bg-paper/60">
-                    <td className="px-5 py-3">
-                      <div className={`flex items-center gap-3 ${p.is_hidden ? 'opacity-50' : ''}`}>
-                        <Thumb src={getCover(p)} />
-                        <span className="font-medium">{p.name}</span>
-                        {p.is_hidden && <span className="badge bg-ink/10 text-xs text-ink">Đang ẩn</span>}
-                      </div>
-                    </td>
-                    <td className="px-5 py-3">
-                      <span className="badge bg-paper-dim text-muted">{p.categories?.name || 'Chưa phân loại'}</span>
-                    </td>
-                    <td className="px-5 py-3 text-muted">{(p.media || []).length}</td>
-                    <td className="px-5 py-3 text-right font-semibold">{formatVND(parsePrice(p.price))}</td>
-                    <td className="px-5 py-3">
+                {visible.map((p) => {
+                  const price = parsePrice(p.price);
+                  const cost = Number(p.cost || 0);
+                  const profit = price - cost;
+                  const percent = price > 0 && cost > 0 ? Math.round((profit / price) * 100) : 0;
+
+                  return (
+                    <tr key={p.id} className="transition-colors hover:bg-paper/60">
+                      <td className="px-5 py-3">
+                        <div className={`flex items-center gap-3 ${p.is_hidden ? 'opacity-50' : ''}`}>
+                          <Thumb src={getCover(p)} />
+                          <span className="font-medium">{p.name}</span>
+                          {p.is_hidden && <span className="badge bg-ink/10 text-xs text-ink">Đang ẩn</span>}
+                        </div>
+                      </td>
+                      <td className="px-5 py-3">
+                        <span className="badge bg-paper-dim text-muted">{p.categories?.name || 'Chưa phân loại'}</span>
+                      </td>
+                      <td className="px-5 py-3 text-muted">{(p.media || []).length}</td>
+                      <td className="px-5 py-3 text-right font-semibold">{formatVND(price)}</td>
+                      <td className="px-5 py-3 text-right text-xs">
+                        {cost > 0 ? (
+                          <div>
+                            <span className="text-muted block">Vốn: {formatVND(cost)}</span>
+                            <span className="font-semibold text-emerald-600 block">
+                              Lời: +{formatVND(profit)}
+                              <span className="ml-1 text-[10px] bg-emerald-50 text-emerald-700 px-1 py-0.5 rounded font-bold">
+                                +{percent}%
+                              </span>
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-muted/60 italic">Chưa kê vốn</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3">
                       <div className="flex justify-end gap-1">
                         <HideButton product={p} onToggle={toggleHidden} />
                         <Link to={`/?sp=${p.id}`} target="_blank" className="icon-btn" aria-label={`Xem ${p.name} trên cửa hàng`} title="Xem trên cửa hàng">
@@ -145,7 +167,8 @@ export default function ProductManager() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                );
+              })}
               </tbody>
             </table>
 
@@ -159,7 +182,15 @@ export default function ProductManager() {
                       {p.is_hidden && <span className="badge mr-1.5 bg-ink/10 text-xs text-ink">Đang ẩn</span>}
                       {p.name}
                     </p>
-                    <p className="text-sm text-muted">{p.categories?.name || 'Chưa phân loại'} · {formatVND(parsePrice(p.price))}</p>
+                    <p className="text-sm font-semibold text-ink">
+                      {formatVND(parsePrice(p.price))}
+                      {Number(p.cost) > 0 && (
+                        <span className="ml-1.5 text-xs font-normal text-emerald-600">
+                          (Lời +{formatVND(parsePrice(p.price) - Number(p.cost))})
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-xs text-muted">{p.categories?.name || 'Chưa phân loại'}</p>
                   </div>
                   <HideButton product={p} onToggle={toggleHidden} />
                   <Link to={`/admin/product/edit/${p.id}`} className="icon-btn" aria-label={`Sửa ${p.name}`}>
