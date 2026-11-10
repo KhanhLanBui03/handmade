@@ -8,7 +8,6 @@ import {
   Storefront,
   CalendarBlank,
   NotePencil,
-  Check,
   X,
   Receipt,
   Trash,
@@ -16,26 +15,31 @@ import {
   Database,
   CircleNotch,
   ShoppingBag,
+  DownloadSimple,
+  CheckCircle,
 } from '@phosphor-icons/react';
 import { supabase } from '../../lib/supabase';
-import { insertOrder } from '../../lib/saveOrder';
+import { insertOrder, loadFeeNames } from '../../lib/saveOrder';
 import ProductPeek from '../../components/admin/ProductPeek';
+import { useInvoiceExport } from '../../components/admin/useInvoiceExport';
 import { formatVND, getCover, shortId } from '../../lib/format';
 import { PageHeader, Spinner, EmptyState, Thumb } from '../../components/admin/ui';
 
 const STATUS = {
   new: { label: 'Mới', cls: 'bg-sunflower/20 text-[#8a5a00]' },
-  confirmed: { label: 'Đã xác nhận', cls: 'bg-blush text-brick' },
+  confirmed: { label: 'Đang giao', cls: 'bg-blush text-brick' },
   done: { label: 'Hoàn thành', cls: 'bg-sage-soft text-sage' },
   cancelled: { label: 'Đã hủy', cls: 'bg-ink/10 text-muted' },
 };
 const TABS = [
   { v: 'new', label: 'Mới' },
-  { v: 'confirmed', label: 'Đã xác nhận' },
+  { v: 'confirmed', label: 'Đang giao' },
   { v: 'done', label: 'Hoàn thành' },
   { v: 'cancelled', label: 'Đã hủy' },
   { v: 'all', label: 'Tất cả' },
 ];
+
+const toNumber = (v) => Number(String(v ?? '').replace(/[^\d]/g, '')) || 0;
 
 const isMissingTable = (error) =>
   error && (error.code === '42P01' || error.code === 'PGRST205' || /customer_orders/.test(error.message || ''));
@@ -51,9 +55,19 @@ export default function OnlineOrders() {
   const [busyId, setBusyId] = useState(null);
   const [products, setProducts] = useState([]);
   const [peek, setPeek] = useState(null); // { product, name } đang xem chi tiết
+  const invoice = useInvoiceExport(); // tải / in phiếu mua hàng
+  const [shipDrafts, setShipDrafts] = useState({}); // tiền ship đang nhập cho từng đơn mới { id: '30000' }
+  const shipOf = (o) => (shipDrafts[o.id] !== undefined ? toNumber(shipDrafts[o.id]) : Number(o.shipping_fee) || 0);
+  // Phí khác (tên + số tiền) đang nhập cho từng đơn mới
+  const [feeDrafts, setFeeDrafts] = useState({}); // { id: { name, amount } }
+  const [feeNames, setFeeNames] = useState([]); // tên phí đã dùng → gợi ý
+  const otherOf = (o) => (feeDrafts[o.id]?.amount !== undefined ? toNumber(feeDrafts[o.id].amount) : Number(o.other_fee) || 0);
+  const otherNameOf = (o) => (feeDrafts[o.id]?.name !== undefined ? feeDrafts[o.id].name : o.other_fee_name || '');
+  const setFee = (id, patch) => setFeeDrafts((d) => ({ ...d, [id]: { ...d[id], ...patch } }));
 
   // Sản phẩm để hiện ảnh & mở chi tiết (lấy đủ cột, kể cả danh mục)
   useEffect(() => {
+    loadFeeNames().then(setFeeNames);
     supabase
       .from('products')
       .select('*, categories(name)')
@@ -93,24 +107,69 @@ export default function OnlineOrders() {
     replace(data);
   };
 
-  // Chuyển đơn online thành hóa đơn bán hàng (trang Hóa đơn)
-  const createInvoice = async (order) => {
-    if (!confirm(`Tạo hóa đơn từ đơn #${shortId(order.id)} của ${order.customer_name}?\nPhí ship có thể sửa thêm ở trang Hóa đơn.`)) return;
-    setBusyId(order.id);
-    // Mỗi thông tin một dòng
+  // Dữ liệu hóa đơn từ đơn online — mỗi thông tin một dòng trong ghi chú
+  const toInvoice = (order) => {
     const noteParts = [
       order.delivery_method === 'ship' && order.address ? `Giao: ${order.address}` : 'Nhận hàng: Khách tự đến lấy',
       `SĐT: ${order.phone}`,
       order.note ? `Ghi chú: ${order.note}` : null,
     ].filter(Boolean);
-    const invoice = {
-      total_amount: order.total_amount,
+    const ship = Number(order.shipping_fee) || 0;
+    const other = Number(order.other_fee) || 0;
+    const inv = {
+      total_amount: Number(order.total_amount) + ship + other, // tiền hàng + ship + phí khác
       items: order.items,
       customer_name: order.customer_name,
       note: noteParts.join('\n'),
     };
-    if (order.receive_date) invoice.receive_date = order.receive_date;
-    const { data: inv, error, movedDateToNote } = await insertOrder(invoice);
+    if (order.receive_date) inv.receive_date = order.receive_date;
+    if (ship > 0) inv.shipping_fee = ship;
+    if (other > 0) {
+      inv.other_fee = other;
+      if (order.other_fee_name) inv.other_fee_name = order.other_fee_name;
+    }
+    return inv;
+  };
+
+  // Mới → "Xác nhận & tải phiếu": lưu tiền ship, chuyển sang Đang giao, tải ảnh phiếu mua hàng để gửi khách.
+  // CHƯA tạo hóa đơn nên chưa tính vào doanh thu.
+  const confirmAndSend = async (order) => {
+    const ship = shipOf(order);
+    setBusyId(order.id);
+    const patch = { status: 'confirmed' };
+    if (ship > 0 || Number(order.shipping_fee) > 0) patch.shipping_fee = ship;
+    const other = otherOf(order);
+    const otherName = otherNameOf(order).trim();
+    if (other > 0 || Number(order.other_fee) > 0) {
+      patch.other_fee = other;
+      patch.other_fee_name = other > 0 ? otherName || null : null;
+    }
+    const { data, error } = await supabase.from('customer_orders').update(patch).eq('id', order.id).select().single();
+    setBusyId(null);
+    if (error) {
+      return alert(
+        /shipping_fee|other_fee/.test(error.message || '')
+          ? 'Chưa có cột tiền ship / phí khác cho đơn online. Mở Supabase → SQL Editor, chạy lại file supabase/customer_orders.sql rồi thử lại.'
+          : 'Không cập nhật được: ' + error.message,
+      );
+    }
+    replace(data);
+    await downloadSlip(data);
+  };
+  // Tải (hoặc tải lại) ảnh phiếu mua hàng: máy tính tải file ảnh về, điện thoại mở bảng chia sẻ (Zalo...)
+  const downloadSlip = (order) => invoice.sendImage({ ...toInvoice(order), id: order.id, created_at: order.created_at });
+
+  // Đang giao → "Hoàn thành đơn": lúc này mới tạo hóa đơn → tính vào doanh thu & thu nhập
+  const completeOrder = async (order) => {
+    if (
+      !confirm(
+        `Hoàn thành đơn #${shortId(order.id)} của ${order.customer_name}?\n` +
+          'Đơn sẽ được tạo hóa đơn và tính vào doanh thu, thu nhập từ hôm nay.',
+      )
+    )
+      return;
+    setBusyId(order.id);
+    const { data: inv, error, movedToNote } = await insertOrder(toInvoice(order));
     if (error) {
       setBusyId(null);
       return alert(
@@ -128,7 +187,7 @@ export default function OnlineOrders() {
     setBusyId(null);
     if (err2) return alert('Đã tạo hóa đơn nhưng chưa cập nhật được trạng thái đơn: ' + err2.message);
     replace(data);
-    if (movedDateToNote) alert('Supabase chưa có cột ngày nhận nên ngày nhận đã được ghi vào phần ghi chú. Chạy file supabase/orders_customer_note.sql để có cột riêng.');
+    if (movedToNote) alert('Supabase chưa có cột ngày nhận nên ngày nhận đã được ghi vào phần ghi chú. Chạy file supabase/orders_customer_note.sql để có cột riêng.');
   };
 
   const remove = async (order) => {
@@ -142,7 +201,7 @@ export default function OnlineOrders() {
     <div>
       <PageHeader
         title="Đơn online"
-        description="Đơn khách đặt trên website. Xác nhận với khách qua Zalo/điện thoại, sau đó tạo hóa đơn."
+        description="Mới (điền tiền ship, phí khác) → Xác nhận & tải phiếu gửi khách → Đang giao → Hoàn thành. Chỉ tính doanh thu khi bấm Hoàn thành."
       />
 
       {missingTable && (
@@ -260,9 +319,68 @@ export default function OnlineOrders() {
                         );
                       })}
                     </ul>
-                    <div className="mt-3 flex items-center justify-between border-t border-line pt-3">
-                      <span className="text-sm text-muted">Tổng tiền hàng</span>
-                      <span className="text-lg font-semibold text-brick">{formatVND(o.total_amount)}</span>
+                    <div className="mt-3 space-y-2 border-t border-line pt-3 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted">Tiền hàng</span>
+                        <span className="font-medium">{formatVND(o.total_amount)}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <label htmlFor={`ship-${o.id}`} className="text-muted">Tiền ship</label>
+                        {o.status === 'new' ? (
+                          <input
+                            id={`ship-${o.id}`}
+                            type="text"
+                            inputMode="numeric"
+                            value={shipOf(o) ? shipOf(o).toLocaleString('vi-VN') : ''}
+                            onChange={(e) => setShipDrafts((d) => ({ ...d, [o.id]: e.target.value }))}
+                            placeholder={o.delivery_method === 'pickup' ? 'Tự lấy — để trống' : 'Shop điền, VD: 30.000'}
+                            className="input h-9 w-44 text-right text-sm"
+                          />
+                        ) : (
+                          <span className="font-medium">{Number(o.shipping_fee) > 0 ? formatVND(o.shipping_fee) : '—'}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="shrink-0 text-muted">Phí khác</span>
+                        {o.status === 'new' ? (
+                          <div className="flex min-w-0 gap-2">
+                            <input
+                              type="text"
+                              list="online-fee-names"
+                              autoComplete="off"
+                              value={otherNameOf(o)}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                // Chọn lại tên đã dùng → tự điền số tiền lần trước (nếu chưa nhập)
+                                const hit = feeNames.find((f) => f.name.toLowerCase() === v.trim().toLowerCase());
+                                setFee(o.id, hit && hit.amount && !otherOf(o) ? { name: v, amount: String(hit.amount) } : { name: v });
+                              }}
+                              placeholder="Tên: thiệp, gói quà..."
+                              aria-label="Tên phí khác"
+                              className="input h-9 min-w-0 flex-1 text-sm"
+                            />
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={otherOf(o) ? otherOf(o).toLocaleString('vi-VN') : ''}
+                              onChange={(e) => setFee(o.id, { amount: e.target.value })}
+                              placeholder="Số tiền"
+                              aria-label="Số tiền phí khác"
+                              className="input h-9 w-28 text-right text-sm"
+                            />
+                          </div>
+                        ) : (
+                          <span className="font-medium">
+                            {Number(o.other_fee) > 0
+                              ? `${o.other_fee_name ? `${o.other_fee_name} · ` : ''}${formatVND(o.other_fee)}`
+                              : '—'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between border-t border-line pt-2">
+                        <span className="font-medium">Tổng thanh toán</span>
+                        <span className="text-lg font-semibold text-brick">{formatVND(Number(o.total_amount) + shipOf(o) + otherOf(o))}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -275,8 +393,8 @@ export default function OnlineOrders() {
                       <button type="button" disabled={busy} onClick={() => setStatus(o, 'cancelled')} className="btn btn-ghost btn-sm text-muted">
                         <X size={16} /> Hủy đơn
                       </button>
-                      <button type="button" disabled={busy} onClick={() => setStatus(o, 'confirmed')} className="btn btn-primary btn-sm">
-                        <Check size={16} weight="bold" /> Đã xác nhận với khách
+                      <button type="button" disabled={busy || invoice.busy} onClick={() => confirmAndSend(o)} className="btn btn-primary btn-sm">
+                        <DownloadSimple size={16} weight="bold" /> Xác nhận & tải phiếu mua hàng
                       </button>
                     </>
                   )}
@@ -285,13 +403,16 @@ export default function OnlineOrders() {
                       <button type="button" disabled={busy} onClick={() => setStatus(o, 'cancelled')} className="btn btn-ghost btn-sm text-muted">
                         <X size={16} /> Hủy đơn
                       </button>
-                      <button type="button" disabled={busy} onClick={() => createInvoice(o)} className="btn btn-accent btn-sm">
-                        <Receipt size={16} /> Tạo hóa đơn
+                      <button type="button" disabled={busy || invoice.busy} onClick={() => downloadSlip(o)} className="btn btn-outline btn-sm">
+                        <DownloadSimple size={16} /> Tải lại phiếu
+                      </button>
+                      <button type="button" disabled={busy} onClick={() => completeOrder(o)} className="btn btn-accent btn-sm">
+                        <CheckCircle size={16} weight="bold" /> Hoàn thành đơn
                       </button>
                     </>
                   )}
                   {o.status === 'done' && o.invoice_id && (
-                    <Link to="/admin/orders" className="btn btn-ghost btn-sm text-sage">
+                    <Link to="/admin/stats" className="btn btn-ghost btn-sm text-sage">
                       <Receipt size={16} /> Đã tạo hóa đơn #{shortId(o.invoice_id)}
                     </Link>
                   )}
@@ -311,6 +432,12 @@ export default function OnlineOrders() {
       )}
 
       {peek && <ProductPeek product={peek.product} fallbackName={peek.name} onClose={() => setPeek(null)} />}
+      {invoice.element}
+      <datalist id="online-fee-names">
+        {feeNames.map((f) => (
+          <option key={f.name} value={f.name} label={f.amount ? formatVND(f.amount) : undefined} />
+        ))}
+      </datalist>
     </div>
   );
 }

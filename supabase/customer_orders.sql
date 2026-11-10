@@ -42,3 +42,28 @@ create policy "Admin quản lý đơn online"
   to authenticated
   using (true)
   with check (true);
+
+-- ── Cập nhật: tiền ship do shop tự điền khi xác nhận đơn ──────────────────────
+alter table public.customer_orders
+  add column if not exists shipping_fee numeric not null default 0 check (shipping_fee >= 0);
+
+-- Khách gửi đơn: không được tự đặt tiền ship
+drop policy if exists "Khách gửi đơn" on public.customer_orders;
+create policy "Khách gửi đơn"
+  on public.customer_orders
+  for insert
+  to anon, authenticated
+  with check (status = 'new' and invoice_id is null and shipping_fee = 0);
+
+-- ── Cập nhật: phí khác (thiệp, gói quà...) do shop tự điền khi xác nhận đơn ───
+alter table public.customer_orders
+  add column if not exists other_fee      numeric not null default 0 check (other_fee >= 0),
+  add column if not exists other_fee_name text;
+
+-- Khách gửi đơn: không được tự đặt tiền ship / phí khác
+drop policy if exists "Khách gửi đơn" on public.customer_orders;
+create policy "Khách gửi đơn"
+  on public.customer_orders
+  for insert
+  to anon, authenticated
+  with check (status = 'new' and invoice_id is null and shipping_fee = 0 and other_fee = 0 and other_fee_name is null);

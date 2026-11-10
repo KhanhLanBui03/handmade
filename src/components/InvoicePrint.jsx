@@ -113,7 +113,7 @@ export const InvoicePrint = React.forwardRef(({ order }, ref) => {
           <div className="shrink-0" style={{ width: 300 }}>
             <Row label={`Tiền hàng (${totalQty} sản phẩm)`} value={vnd(subtotal)} />
             {ship > 0 && <Row label="Tiền ship" value={vnd(ship)} />}
-            {other > 0 && <Row label="Phí khác" value={vnd(other)} />}
+            {other > 0 && <Row label={order.other_fee_name ? `Phí khác (${order.other_fee_name})` : 'Phí khác'} value={vnd(other)} />}
             <div
               className="mt-3 flex items-center justify-between rounded-xl px-4 py-3.5"
               style={{ background: C.blue, color: '#fff' }}

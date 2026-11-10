@@ -109,12 +109,26 @@ export function PageHeader({ title, description, actions }) {
   );
 }
 
-export function StatCard({ icon: Icon, label, value, hint, tone = 'brick' }) {
+export function StatCard({ icon: Icon, label, value, hint, tone = 'brick', compact = false }) {
   const tones = {
     brick: 'bg-blush text-brick',
     sage: 'bg-sage-soft text-sage',
     sun: 'bg-sunflower/20 text-[#9a6b00]',
   };
+  if (compact) {
+    return (
+      <div className="card flex items-center gap-2.5 p-2.5">
+        <span className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${tones[tone]}`}>
+          <Icon size={16} weight="duotone" />
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-[11px] text-muted">{label}</p>
+          <p className="truncate text-sm font-semibold leading-tight tracking-tight">{value}</p>
+          {hint && <p className="truncate text-[10px] text-muted">{hint}</p>}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="card flex items-center gap-4 p-5">
       <span className={`flex size-12 shrink-0 items-center justify-center rounded-xl ${tones[tone]}`}>

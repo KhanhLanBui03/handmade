@@ -10,27 +10,16 @@ import {
   Star,
   Tag,
   ImageSquare,
-  Shapes,
   Calculator,
-  ArrowSquareOut,
 } from '@phosphor-icons/react';
 import { supabase } from '../../lib/supabase';
 import { formatVND, parsePrice } from '../../lib/format';
 import { Spinner } from '../../components/admin/ui';
 
-const UNITS = ['cái', 'cuộn', 'bó', 'cây', 'bịch', 'tờ', 'hộp', 'kg', 'mét', 'gói'];
 const toNumber = (v) => Number(String(v ?? '').replace(/[^\d]/g, '')) || 0;
 
-let matSeq = 0;
-const newMaterialLine = () => ({
-  key: ++matSeq,
-  material_id: null,
-  name: '',
-  quantity: '1',
-  unit: 'cái',
-  unit_price: '',
-  isCustom: false,
-});
+let costSeq = 0;
+const newCostLine = () => ({ key: ++costSeq, name: '', cost: '' });
 
 export default function ProductForm() {
   const navigate = useNavigate();
@@ -40,7 +29,6 @@ export default function ProductForm() {
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(isEdit);
   const [categories, setCategories] = useState([]);
-  const [availableMaterials, setAvailableMaterials] = useState([]);
   const [uploading, setUploading] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -54,19 +42,38 @@ export default function ProductForm() {
   });
   const [hadVariants, setHadVariants] = useState(false);
 
-  // Chi phí nguyên liệu cấu thành sản phẩm
-  const [materialsCost, setMaterialsCost] = useState([]);
+  // Chi phí sản phẩm (tên + giá, nhập tay)
+  const [costItems, setCostItems] = useState([]);
+  const [costNames, setCostNames] = useState([]); // tên chi phí đã từng nhập → gợi ý [{ name, cost, count }]
 
   const set = (patch) => setFormData((f) => ({ ...f, ...patch }));
 
   useEffect(() => {
     async function init() {
-      const [{ data: cats }, { data: mats }] = await Promise.all([
-        supabase.from('categories').select('*').order('created_at'),
-        supabase.from('materials').select('*').order('name'),
-      ]);
+      const { data: cats } = await supabase.from('categories').select('*').order('created_at');
       if (cats) setCategories(cats);
-      if (mats) setAvailableMaterials(mats);
+
+      // Gợi ý tên chi phí: lấy từ chi phí đã nhập ở các sản phẩm + danh mục nguyên liệu
+      const [costRes, matRes] = await Promise.all([
+        supabase.from('products').select('materials_cost, created_at').order('created_at', { ascending: false }),
+        supabase.from('materials').select('name, default_price'),
+      ]);
+      const map = new Map();
+      (costRes.data || []).forEach((p) =>
+        (Array.isArray(p.materials_cost) ? p.materials_cost : []).forEach((m) => {
+          const name = String(m?.name || '').trim();
+          if (!name || name === '(Không tên)') return;
+          const key = name.toLowerCase();
+          if (!map.has(key)) map.set(key, { name, cost: Number(m.cost) || 0, count: 0 }); // sản phẩm mới nhất trước
+          map.get(key).count += 1;
+        }),
+      );
+      (matRes.data || []).forEach((m) => {
+        const name = String(m.name || '').trim();
+        const key = name.toLowerCase();
+        if (name && !map.has(key)) map.set(key, { name, cost: Number(m.default_price) || 0, count: 0 });
+      });
+      setCostNames([...map.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'vi')));
 
       if (isEdit) {
         const { data: prod } = await supabase.from('products').select('*').eq('id', id).single();
@@ -87,17 +94,15 @@ export default function ProductForm() {
           setHadVariants((prod.variants || []).length > 0);
 
           if (prod.materials_cost && Array.isArray(prod.materials_cost)) {
-            setMaterialsCost(
+            setCostItems(
               prod.materials_cost.map((m) => ({
-                key: ++matSeq,
-                material_id: m.material_id || null,
+                key: ++costSeq,
                 name: m.name || '',
-                quantity: m.quantity ? String(m.quantity) : '',
-                unit: m.unit || 'cái',
-                unit_price: m.unit_price ? String(m.unit_price) : '',
-                isCustom: !m.material_id,
+                cost: m.cost ? String(m.cost) : (m.unit_price && m.quantity ? String(toNumber(m.unit_price) * toNumber(m.quantity)) : ''),
               })),
             );
+          } else if (prod.cost && Number(prod.cost) > 0) {
+            setCostItems([{ key: ++costSeq, name: 'Chi phí', cost: String(prod.cost) }]);
           }
         }
       }
@@ -158,39 +163,16 @@ export default function ProductForm() {
     set({ media: [item, ...media] });
   };
 
-  // Quản lý dòng nguyên liệu
-  const addMaterialRow = () => setMaterialsCost((list) => [...list, newMaterialLine()]);
-  const removeMaterialRow = (key) => setMaterialsCost((list) => list.filter((m) => m.key !== key));
-  const updateMaterialRow = (key, patch) =>
-    setMaterialsCost((list) => list.map((m) => (m.key === key ? { ...m, ...patch } : m)));
+  // Quản lý dòng chi phí
+  const addCostItem = () => setCostItems((list) => [...list, newCostLine()]);
+  const removeCostItem = (key) => setCostItems((list) => list.filter((c) => c.key !== key));
+  const updateCostItem = (key, patch) =>
+    setCostItems((list) => list.map((c) => (c.key === key ? { ...c, ...patch } : c)));
 
-  const handleSelectMaterial = (key, materialName) => {
-    if (materialName === '__custom__') {
-      updateMaterialRow(key, { isCustom: true, name: '', material_id: null });
-      return;
-    }
-    const mat = availableMaterials.find((m) => m.name === materialName);
-    if (mat) {
-      updateMaterialRow(key, {
-        name: mat.name,
-        unit: mat.unit || 'cái',
-        unit_price: mat.default_price ? String(mat.default_price) : '',
-        material_id: mat.id,
-        isCustom: false,
-      });
-    } else {
-      updateMaterialRow(key, { name: '', material_id: null, isCustom: false });
-    }
-  };
-
-  // Tổng chi phí nguyên liệu
+  // Tổng chi phí
   const totalCost = useMemo(() => {
-    return materialsCost.reduce((sum, m) => {
-      const q = toNumber(m.quantity);
-      const p = toNumber(m.unit_price);
-      return sum + q * p;
-    }, 0);
-  }, [materialsCost]);
+    return costItems.reduce((sum, c) => sum + toNumber(c.cost), 0);
+  }, [costItems]);
 
   const pricePreview = parsePrice(formData.price);
   const firstImageIdx = formData.media.findIndex((m) => m.type !== 'video');
@@ -219,14 +201,11 @@ export default function ProductForm() {
       .filter((v) => v.name.trim())
       .map((v) => ({ name: v.name.trim(), price: toNumber(v.price), image: v.image || null }));
 
-    const cleanMaterialsCost = materialsCost
-      .filter((m) => m.name.trim())
-      .map((m) => ({
-        material_id: m.material_id || null,
-        name: m.name.trim(),
-        quantity: toNumber(m.quantity),
-        unit: m.unit || 'cái',
-        unit_price: toNumber(m.unit_price),
+    const cleanMaterialsCost = costItems
+      .filter((c) => c.name.trim() || toNumber(c.cost) > 0)
+      .map((c) => ({
+        name: c.name.trim() || '(Không tên)',
+        cost: toNumber(c.cost),
       }));
 
     const productData = {
@@ -493,180 +472,95 @@ export default function ProductForm() {
             </button>
           </section>
 
-          {/* MỤC CHI PHÍ NGUYÊN LIỆU (GIÁ VỐN) & TÍNH LỢI NHUẬN */}
+          {/* MỤC CHI PHÍ (GIÁ VỐN) & TÍNH LỢI NHUẬN */}
           <section className="card p-5 sm:p-6">
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2">
-                <span className="flex size-8 items-center justify-center rounded-lg bg-blush text-brick">
-                  <Shapes size={18} weight="duotone" />
-                </span>
-                <h2 className="font-semibold text-lg">Chi phí nguyên liệu (Giá vốn)</h2>
-              </div>
-              <Link
-                to="/admin/materials"
-                target="_blank"
-                className="text-xs text-brick hover:underline flex items-center gap-1"
-              >
-                Quản lý danh mục nguyên liệu <ArrowSquareOut size={12} />
-              </Link>
+            <div className="flex items-center gap-2">
+              <span className="flex size-8 items-center justify-center rounded-lg bg-blush text-brick">
+                <Calculator size={18} weight="duotone" />
+              </span>
+              <h2 className="font-semibold text-lg">Chi phí (Giá vốn)</h2>
             </div>
             <p className="mt-1 text-sm text-muted">
-              Kê khai các nguyên liệu làm nên sản phẩm này. Hệ thống sẽ tự động trừ giá vốn khỏi giá bán để tính tiền
-              lời của món hoa.
+              Nhập các khoản chi phí để làm ra sản phẩm này. Hệ thống sẽ tự tính tiền lời.
             </p>
 
-            {materialsCost.length > 0 && (
-              <div className="mt-5 space-y-3">
-                <div className="hidden grid-cols-12 gap-2 px-1 text-xs font-semibold uppercase tracking-wider text-muted sm:grid">
-                  <span className="col-span-4">Nguyên liệu</span>
-                  <span className="col-span-2">Số lượng</span>
-                  <span className="col-span-2">Đơn vị</span>
-                  <span className="col-span-2">Đơn giá vốn</span>
-                  <span className="col-span-2 text-right">Thành tiền</span>
-                </div>
-
-                {materialsCost.map((m) => {
-                  const isSaved = availableMaterials.some((am) => am.name === m.name);
-                  const sub = toNumber(m.quantity) * toNumber(m.unit_price);
-                  return (
-                    <div
-                      key={m.key}
-                      className="grid grid-cols-12 items-center gap-2 rounded-xl border border-line bg-paper/50 p-3 sm:border-0 sm:bg-transparent sm:p-0"
-                    >
-                      {/* Tên nguyên liệu */}
-                      <div className="col-span-12 sm:col-span-4 flex items-center gap-1">
-                        {availableMaterials.length > 0 && !m.isCustom ? (
-                          <select
-                            value={isSaved ? m.name : m.name ? '__custom__' : ''}
-                            onChange={(e) => handleSelectMaterial(m.key, e.target.value)}
-                            className="input font-medium text-sm"
-                          >
-                            <option value="">-- Chọn nguyên liệu đã lưu --</option>
-                            <optgroup label="Danh mục nguyên liệu">
-                              {availableMaterials.map((am) => (
-                                <option key={am.id} value={am.name}>
-                                  {am.name} ({formatVND(am.default_price)}/{am.unit})
-                                </option>
-                              ))}
-                            </optgroup>
-                            <option value="__custom__">✍️ Tự gõ tên khác...</option>
-                          </select>
-                        ) : (
-                          <div className="flex-1 flex gap-1 items-center">
-                            <input
-                              type="text"
-                              value={m.name}
-                              onChange={(e) => updateMaterialRow(m.key, { name: e.target.value })}
-                              placeholder="VD: Kẽm nhung, Cúp..."
-                              className="input text-sm"
-                            />
-                            {availableMaterials.length > 0 && (
-                              <button
-                                type="button"
-                                onClick={() => updateMaterialRow(m.key, { isCustom: false })}
-                                className="icon-btn size-9 shrink-0 text-muted hover:text-brick"
-                                title="Chọn từ danh sách đã lưu"
-                              >
-                                <Shapes size={16} />
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Số lượng */}
-                      <input
-                        type="number"
-                        min="0"
-                        step="any"
-                        value={m.quantity}
-                        onChange={(e) => updateMaterialRow(m.key, { quantity: e.target.value })}
-                        placeholder="SL"
-                        className="input col-span-3 sm:col-span-2 text-sm"
-                      />
-
-                      {/* Đơn vị */}
-                      <select
-                        value={m.unit}
-                        onChange={(e) => updateMaterialRow(m.key, { unit: e.target.value })}
-                        className="input col-span-3 sm:col-span-2 text-sm"
-                      >
-                        {UNITS.map((u) => (
-                          <option key={u} value={u}>
-                            {u}
-                          </option>
-                        ))}
-                      </select>
-
-                      {/* Đơn giá vốn */}
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={toNumber(m.unit_price) ? toNumber(m.unit_price).toLocaleString('vi-VN') : ''}
-                        onChange={(e) => updateMaterialRow(m.key, { unit_price: e.target.value })}
-                        placeholder="Giá vốn"
-                        className="input col-span-4 sm:col-span-2 text-sm"
-                      />
-
-                      {/* Thành tiền & Nút xóa */}
-                      <div className="col-span-2 flex items-center justify-between sm:justify-end gap-1">
-                        <span className="text-xs font-semibold text-ink sm:hidden">Thành tiền:</span>
-                        <span className="text-sm font-semibold text-brick">{formatVND(sub)}</span>
-                        <button
-                          type="button"
-                          onClick={() => removeMaterialRow(m.key)}
-                          className="icon-btn size-9 shrink-0 hover:text-brick"
-                          title="Xóa dòng"
-                        >
-                          <X size={16} />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
+            {/* Header cột */}
+            {costItems.length > 0 && (
+              <div className="mt-5 hidden grid-cols-12 gap-2 px-1 text-xs font-semibold uppercase tracking-wider text-muted sm:grid">
+                <span className="col-span-7">Tên chi phí</span>
+                <span className="col-span-4">Số tiền</span>
               </div>
             )}
 
-            <button type="button" onClick={addMaterialRow} className="btn btn-ghost btn-sm -ml-2 mt-3 text-brick">
-              <Plus size={14} weight="bold" /> Thêm nguyên liệu cấu thành
+            {/* Danh sách dòng chi phí */}
+            <div className="mt-3 space-y-2">
+              {costItems.map((c) => (
+                <div key={c.key} className="grid grid-cols-12 items-center gap-2">
+                  <input
+                    type="text"
+                    list="cost-names"
+                    autoComplete="off"
+                    value={c.name}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      // Chọn lại tên đã dùng → tự điền số tiền lần trước (nếu ô tiền đang trống)
+                      const hit = costNames.find((n) => n.name.toLowerCase() === v.trim().toLowerCase());
+                      updateCostItem(c.key, hit && hit.cost && !toNumber(c.cost) ? { name: v, cost: String(hit.cost) } : { name: v });
+                    }}
+                    placeholder="VD: Kẽm nhung, Cúp, Băng keo…"
+                    aria-label="Tên chi phí"
+                    className="input col-span-7 text-sm"
+                  />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={toNumber(c.cost) ? toNumber(c.cost).toLocaleString('vi-VN') : ''}
+                    onChange={(e) => updateCostItem(c.key, { cost: e.target.value })}
+                    placeholder="0"
+                    className="input col-span-4 text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeCostItem(c.key)}
+                    className="icon-btn col-span-1 size-9 justify-self-end hover:text-brick"
+                    title="Xóa dòng"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <button type="button" onClick={addCostItem} className="btn btn-ghost btn-sm -ml-2 mt-3 text-brick">
+              <Plus size={14} weight="bold" /> Thêm dòng chi phí
             </button>
 
-            {/* BẢNG TÍNH LỢI NHUẬN / THU NHẬP DỰ KIẾN */}
-            <div className="mt-6 rounded-2xl border border-line bg-paper-dim/60 p-4 sm:p-5">
-              <div className="flex items-center gap-2 font-semibold text-ink pb-3 border-b border-line">
-                <Calculator size={18} className="text-brick" />
-                <span>Bảng tính lợi nhuận sản phẩm:</span>
-              </div>
+            <datalist id="cost-names">
+              {costNames.map((n) => (
+                <option key={n.name} value={n.name} label={n.cost ? formatVND(n.cost) : undefined} />
+              ))}
+            </datalist>
 
-              <div className="mt-3 space-y-2.5 text-sm">
-                <div className="flex justify-between items-center text-muted">
-                  <span>Giá bán {hasVariants ? '(phân loại thấp nhất)' : ''}:</span>
-                  <span className="font-semibold text-ink text-base">{formatVND(basePrice)}</span>
-                </div>
-                <div className="flex justify-between items-center text-muted">
-                  <span>Tổng chi phí nguyên liệu (Giá vốn):</span>
-                  <span className="font-semibold text-brick text-base">
-                    {totalCost > 0 ? `- ${formatVND(totalCost)}` : '0 đ'}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center pt-2 border-t border-line">
-                  <div>
-                    <span className="font-bold text-ink block text-base">Thu nhập dự kiến (Tiền lời):</span>
-                    <span className="text-xs text-muted">Lợi nhuận trên mỗi sản phẩm bán ra</span>
-                  </div>
-                  <div className="text-right">
-                    <span
-                      className={`text-xl font-extrabold ${estimatedProfit >= 0 ? 'text-emerald-600' : 'text-brick'}`}
-                    >
-                      {estimatedProfit >= 0 ? `+${formatVND(estimatedProfit)}` : formatVND(estimatedProfit)}
-                    </span>
-                    {basePrice > 0 && totalCost > 0 && (
-                      <span className="block text-xs font-semibold text-emerald-700">
-                        Tỷ suất lợi nhuận: {profitPercent}%
-                      </span>
-                    )}
-                  </div>
-                </div>
+            {/* Dòng tổng */}
+            <div className="mt-4 rounded-xl border border-line bg-paper-dim/60 p-4">
+              <div className="flex items-center justify-between text-sm text-muted">
+                <span>Giá bán {hasVariants ? '(phân loại thấp nhất)' : ''}:</span>
+                <span className="font-semibold text-ink">{formatVND(basePrice)}</span>
+              </div>
+              <div className="mt-2 flex items-center justify-between text-sm text-muted">
+                <span>Tổng chi phí:</span>
+                <span className="font-semibold text-brick">
+                  {totalCost > 0 ? `- ${formatVND(totalCost)}` : '0 đ'}
+                </span>
+              </div>
+              <div className="mt-3 flex items-center justify-between border-t border-line pt-3">
+                <span className="font-bold text-ink">Tiền lời:</span>
+                <span className={`text-xl font-extrabold ${estimatedProfit >= 0 ? 'text-emerald-600' : 'text-brick'}`}>
+                  {estimatedProfit >= 0 ? `+${formatVND(estimatedProfit)}` : formatVND(estimatedProfit)}
+                  {basePrice > 0 && totalCost > 0 && (
+                    <span className="ml-2 text-xs font-semibold text-muted">({profitPercent}%)</span>
+                  )}
+                </span>
               </div>
             </div>
           </section>

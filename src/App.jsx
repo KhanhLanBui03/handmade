@@ -8,7 +8,6 @@ import Dashboard from './pages/admin/Dashboard';
 import ProductForm from './pages/admin/ProductForm';
 import ProductManager from './pages/admin/ProductManager';
 import CategoryManager from './pages/admin/CategoryManager';
-import OrderHistory from './pages/admin/OrderHistory';
 import StockImport from './pages/admin/StockImport';
 import MaterialManager from './pages/admin/MaterialManager';
 import OnlineOrders from './pages/admin/OnlineOrders';
@@ -38,7 +37,7 @@ export default function App() {
         <Route path="/admin" element={<AdminLayout />}>
           <Route index element={<Dashboard />} />
           <Route path="online-orders" element={<OnlineOrders />} />
-          <Route path="orders" element={<OrderHistory />} />
+          <Route path="orders" element={<Navigate to="/admin/stats" replace />} />
           <Route path="stats" element={<SalesStats />} />
           <Route path="imports" element={<StockImport />} />
           <Route path="materials" element={<MaterialManager />} />

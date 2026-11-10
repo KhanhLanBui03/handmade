@@ -5,7 +5,7 @@ import {
   CurrencyCircleDollar, Receipt, Package, WarningCircle, ShareNetwork, Printer, TrendUp,
 } from '@phosphor-icons/react';
 import { supabase } from '../../lib/supabase';
-import { insertOrder } from '../../lib/saveOrder';
+import { insertOrder, loadFeeNames } from '../../lib/saveOrder';
 import { sellablesOf } from '../../lib/variants';
 import { formatVND, shortId } from '../../lib/format';
 import { PageHeader, StatCard, Spinner, Thumb, EmptyState, DateField } from '../../components/admin/ui';
@@ -27,13 +27,17 @@ async function loadTodayStats(productsList = []) {
     costMap[p.id] = Number(p.cost || 0);
   });
   let totalCost = 0;
+  let goods = 0; // tiền hàng (không gồm ship & phí khác)
   list.forEach((o) => {
     (o.items || []).forEach((it) => {
-      totalCost += Number(it.quantity || 0) * (costMap[it.product_id] || 0);
+      const qty = Number(it.quantity || 0);
+      totalCost += qty * (costMap[it.product_id] || 0);
+      goods += qty * Number(it.price || 0);
     });
   });
   const revenue = list.reduce((s, o) => s + Number(o.total_amount || 0), 0);
-  const profit = revenue - totalCost;
+  // Lợi nhuận chỉ tính tiền hàng − giá vốn, không gồm ship & phí khác
+  const profit = goods - totalCost;
   return { count: list.length, revenue, profit, cost: totalCost };
 }
 
@@ -48,6 +52,8 @@ export default function Dashboard() {
   const [customerName, setCustomerName] = useState('');
   const [orderNote, setOrderNote] = useState('');
   const [otherFee, setOtherFee] = useState('');
+  const [otherFeeName, setOtherFeeName] = useState('');
+  const [feeNames, setFeeNames] = useState([]); // tên phí đã dùng → gợi ý
   const [receiveDate, setReceiveDate] = useState(''); // ngày khách nhận hàng (không bắt buộc)
   const [shippingFee, setShippingFee] = useState('');
   const [lastOrder, setLastOrder] = useState(null); // hóa đơn vừa lưu, để gửi/in cho khách
@@ -65,6 +71,7 @@ export default function Dashboard() {
       setLoading(false);
     }
     fetchData();
+    loadFeeNames().then(setFeeNames);
   }, []);
 
   const setQty = (id, value) => {
@@ -120,19 +127,22 @@ export default function Dashboard() {
     if (customerName.trim()) order.customer_name = customerName.trim();
     if (orderNote.trim()) order.note = orderNote.trim();
     if (other > 0) order.other_fee = other;
+    if (other > 0 && otherFeeName.trim()) order.other_fee_name = otherFeeName.trim();
     if (ship > 0) order.shipping_fee = ship;
-    const { data: saved, error, movedDateToNote } = await insertOrder(order);
+    const { data: saved, error, movedToNote } = await insertOrder(order);
     setSaving(false);
 
     if (error) {
-      showToast('error', /customer_name|note|shipping_fee|other_fee|receive_date/.test(error.message || '') ? 'Chưa có cột tên khách/tiền ship/ghi chú/phí khác/ngày nhận. Chạy file supabase/orders_customer_note.sql trong Supabase rồi thử lại.' : 'Lỗi lưu đơn hàng: ' + error.message);
+      showToast('error', /customer_name|note|shipping_fee|other_fee|receive_date|other_fee_name/.test(error.message || '') ? 'Chưa có cột tên khách/tiền ship/ghi chú/phí khác/ngày nhận/tên phí. Chạy file supabase/orders_customer_note.sql trong Supabase rồi thử lại.' : 'Lỗi lưu đơn hàng: ' + error.message);
     } else {
-      showToast('success', movedDateToNote ? `Đã lưu hóa đơn (ngày nhận ghi trong ghi chú)` : `Đã lưu hóa đơn ${formatVND(total)}`);
+      showToast('success', movedToNote ? `Đã lưu hóa đơn (một số thông tin ghi trong ghi chú)` : `Đã lưu hóa đơn ${formatVND(total)}`);
       setOrderItems({});
       setLastOrder(saved);
       setCustomerName('');
       setOrderNote('');
       setOtherFee('');
+      setOtherFeeName('');
+      loadFeeNames().then(setFeeNames);
       setReceiveDate('');
       setShippingFee('');
       loadTodayStats(products).then(setToday);
@@ -331,18 +341,61 @@ export default function Dashboard() {
                 />
               </div>
               <div>
-                <label htmlFor="order-other" className="label">
+                <label htmlFor="order-other-name" className="label">
                   Phí khác <span className="font-normal text-muted">(cộng vào tổng)</span>
                 </label>
-                <input
-                  id="order-other"
-                  type="text"
-                  inputMode="numeric"
-                  value={other ? other.toLocaleString('vi-VN') : ''}
-                  onChange={(e) => setOtherFee(e.target.value)}
-                  placeholder="VD: 20.000 (thiệp, gói quà...)"
-                  className="input"
-                />
+                <div className="grid grid-cols-5 gap-2">
+                  <input
+                    id="order-other-name"
+                    type="text"
+                    list="fee-names"
+                    autoComplete="off"
+                    value={otherFeeName}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setOtherFeeName(v);
+                      // Chọn lại tên đã dùng → tự điền số tiền lần gần nhất (nếu chưa nhập)
+                      const hit = feeNames.find((f) => f.name.toLowerCase() === v.trim().toLowerCase());
+                      if (hit && hit.amount && !other) setOtherFee(String(hit.amount));
+                    }}
+                    placeholder="Tên phí: thiệp, gói quà..."
+                    aria-label="Tên phí khác"
+                    className="input col-span-3"
+                  />
+                  <input
+                    id="order-other"
+                    type="text"
+                    inputMode="numeric"
+                    value={other ? other.toLocaleString('vi-VN') : ''}
+                    onChange={(e) => setOtherFee(e.target.value)}
+                    placeholder="Số tiền"
+                    aria-label="Số tiền phí khác"
+                    className="input col-span-2"
+                  />
+                </div>
+                <datalist id="fee-names">
+                  {feeNames.map((f) => (
+                    <option key={f.name} value={f.name} label={f.amount ? formatVND(f.amount) : undefined} />
+                  ))}
+                </datalist>
+                {feeNames.length > 0 && !otherFeeName && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {feeNames.slice(0, 6).map((f) => (
+                      <button
+                        key={f.name}
+                        type="button"
+                        onClick={() => {
+                          setOtherFeeName(f.name);
+                          if (f.amount) setOtherFee(String(f.amount));
+                        }}
+                        className="badge bg-paper-dim text-ink ring-1 ring-line hover:bg-blush hover:text-brick"
+                      >
+                        {f.name}
+                        {f.amount > 0 && <span className="text-muted">· {f.amount.toLocaleString('vi-VN')}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -365,7 +418,7 @@ export default function Dashboard() {
               )}
               {other > 0 && (
                 <div className="flex justify-between text-sm text-muted">
-                  <span>Phí khác</span>
+                  <span>Phí khác{otherFeeName.trim() ? ` (${otherFeeName.trim()})` : ''}</span>
                   <span>{formatVND(other)}</span>
                 </div>
               )}
