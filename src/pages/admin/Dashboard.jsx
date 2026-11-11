@@ -6,7 +6,7 @@ import {
 } from '@phosphor-icons/react';
 import { supabase } from '../../lib/supabase';
 import { insertOrder, loadFeeNames } from '../../lib/saveOrder';
-import { sellablesOf } from '../../lib/variants';
+import { sellablesOf, makeCostOf } from '../../lib/variants';
 import { formatVND, shortId } from '../../lib/format';
 import { PageHeader, StatCard, Spinner, Thumb, EmptyState, DateField } from '../../components/admin/ui';
 import { useInvoiceExport } from '../../components/admin/useInvoiceExport';
@@ -22,16 +22,13 @@ async function loadTodayStats(productsList = []) {
     .gte('created_at', startOfDay(now).toISOString())
     .lte('created_at', endOfDay(now).toISOString());
   const list = data || [];
-  const costMap = {};
-  (productsList || []).forEach((p) => {
-    costMap[p.id] = Number(p.cost || 0);
-  });
+  const costOf = makeCostOf(productsList); // giá vốn theo phân loại
   let totalCost = 0;
   let goods = 0; // tiền hàng (không gồm ship & phí khác)
   list.forEach((o) => {
     (o.items || []).forEach((it) => {
       const qty = Number(it.quantity || 0);
-      totalCost += qty * (costMap[it.product_id] || 0);
+      totalCost += qty * costOf(it);
       goods += qty * Number(it.price || 0);
     });
   });

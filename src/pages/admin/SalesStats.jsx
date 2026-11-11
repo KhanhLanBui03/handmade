@@ -26,6 +26,7 @@ import {
 } from '@phosphor-icons/react';
 import { supabase } from '../../lib/supabase';
 import { formatVND, getCover } from '../../lib/format';
+import { makeCostOf } from '../../lib/variants';
 import { PageHeader, StatCard, Spinner, EmptyState, Thumb, DateField } from '../../components/admin/ui';
 import SalesLedger from '../../components/admin/SalesLedger';
 import OrderProfitTable from '../../components/admin/OrderProfitTable';
@@ -143,13 +144,8 @@ export default function SalesStats() {
     };
   }, [rangeKey, month]);
 
-  // Giá vốn mỗi món theo sản phẩm
-  const costMap = useMemo(() => {
-    const m = {};
-    products.forEach((p) => (m[p.id] = num(p.cost)));
-    return m;
-  }, [products]);
-  const costOf = (it) => costMap[it.product_id] || 0;
+  // Giá vốn mỗi món — theo giá vốn riêng của từng phân loại, không có thì lấy giá vốn chung
+  const costOf = useMemo(() => makeCostOf(products), [products]);
 
   // Tổng tiền thực thu cả khoảng (gồm ship & phí khác) — chỉ dùng cho ghi chú, KHÔNG dùng tính lãi
   const collected = orders.reduce((s, o) => s + num(o.total_amount), 0);
@@ -170,7 +166,7 @@ export default function SalesStats() {
         const row = map.get(key);
         const qty = num(it.quantity);
         const rev = qty * num(it.price);
-        const cost = qty * (costMap[it.product_id] || 0);
+        const cost = qty * costOf(it);
         row.qty += qty;
         row.revenue += rev;
         row.cost += cost;
@@ -183,7 +179,7 @@ export default function SalesStats() {
       });
     });
     return [...map.values()];
-  }, [orders, products, costMap]);
+  }, [orders, products, costOf]);
 
   // Danh sách sản phẩm để chọn trong bộ lọc cột (đã bán, theo tên)
   const prodOptions = useMemo(

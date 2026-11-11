@@ -89,6 +89,7 @@ export default function ProductForm() {
               name: v.name || '',
               price: v.price ? String(v.price) : '',
               image: v.image || null,
+              cost: v.cost ? String(v.cost) : '',
             })),
           });
           setHadVariants((prod.variants || []).length > 0);
@@ -155,7 +156,7 @@ export default function ProductForm() {
   // Quản lý phân loại
   const updateVariant = (index, patch) =>
     set({ variants: formData.variants.map((v, i) => (i === index ? { ...v, ...patch } : v)) });
-  const addVariant = () => set({ variants: [...formData.variants, { name: '', price: '', image: null }] });
+  const addVariant = () => set({ variants: [...formData.variants, { name: '', price: '', image: null, cost: '' }] });
   const removeVariant = (index) => set({ variants: formData.variants.filter((_, i) => i !== index) });
   const makeCover = (index) => {
     const media = [...formData.media];
@@ -199,7 +200,7 @@ export default function ProductForm() {
 
     const variants = formData.variants
       .filter((v) => v.name.trim())
-      .map((v) => ({ name: v.name.trim(), price: toNumber(v.price), image: v.image || null }));
+      .map((v) => ({ name: v.name.trim(), price: toNumber(v.price), image: v.image || null, cost: toNumber(v.cost) }));
 
     const cleanMaterialsCost = costItems
       .filter((c) => c.name.trim() || toNumber(c.cost) > 0)
@@ -393,8 +394,9 @@ export default function ProductForm() {
             {formData.variants.length > 0 && (
               <div className="mt-5 space-y-3">
                 <div className="hidden grid-cols-12 gap-2 px-1 text-xs font-semibold uppercase tracking-wider text-muted sm:grid">
-                  <span className="col-span-4">Tên phân loại</span>
-                  <span className="col-span-3">Giá bán</span>
+                  <span className="col-span-3">Tên phân loại</span>
+                  <span className="col-span-2">Giá bán</span>
+                  <span className="col-span-2">Giá vốn</span>
                   <span className="col-span-4">Ảnh gắn kèm</span>
                 </div>
                 {formData.variants.map((v, idx) => {
@@ -410,20 +412,29 @@ export default function ProductForm() {
                         onChange={(e) => updateVariant(idx, { name: e.target.value })}
                         placeholder="VD: 50 bông"
                         aria-label={`Tên phân loại ${idx + 1}`}
-                        className="input col-span-12 sm:col-span-4"
+                        className="input col-span-12 sm:col-span-3"
                       />
                       <input
                         type="text"
                         inputMode="numeric"
                         value={toNumber(v.price) ? toNumber(v.price).toLocaleString('vi-VN') : ''}
                         onChange={(e) => updateVariant(idx, { price: e.target.value })}
-                        placeholder="Giá (đ)"
-                        aria-label={`Giá phân loại ${idx + 1}`}
-                        className={`input col-span-5 sm:col-span-3 ${
+                        placeholder="Giá bán"
+                        aria-label={`Giá bán phân loại ${idx + 1}`}
+                        className={`input col-span-6 sm:col-span-2 ${
                           v.name.trim() && !toNumber(v.price) ? 'border-brick' : ''
                         }`}
                       />
-                      <div className="col-span-6 flex items-center gap-2 sm:col-span-4">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={toNumber(v.cost) ? toNumber(v.cost).toLocaleString('vi-VN') : ''}
+                        onChange={(e) => updateVariant(idx, { cost: e.target.value })}
+                        placeholder="Giá vốn"
+                        aria-label={`Giá vốn phân loại ${idx + 1}`}
+                        className="input col-span-6 sm:col-span-2"
+                      />
+                      <div className="col-span-11 flex items-center gap-2 sm:col-span-4">
                         <span className="size-11 shrink-0 overflow-hidden rounded-lg bg-paper-dim ring-1 ring-line">
                           {v.image ? (
                             <img src={v.image} alt="" className="size-full object-cover" />
@@ -463,6 +474,9 @@ export default function ProductForm() {
                     </div>
                   );
                 })}
+                <p className="px-1 text-xs text-muted">
+                  Để trống <strong>Giá vốn</strong> của phân loại thì sẽ dùng giá vốn chung ở mục “Chi phí (Giá vốn)” bên dưới.
+                </p>
               </div>
             )}
 

@@ -1,11 +1,33 @@
 import { getCover, parsePrice } from './format';
 
-// Phân loại hợp lệ của sản phẩm: [{ name, price, image }]
+// Phân loại hợp lệ của sản phẩm: [{ name, price, image, cost }]
 export function getVariants(product) {
   const list = Array.isArray(product?.variants) ? product.variants : [];
   return list
     .filter((v) => v && String(v.name || '').trim())
-    .map((v) => ({ name: String(v.name).trim(), price: Number(v.price) || 0, image: v.image || null }));
+    .map((v) => ({ name: String(v.name).trim(), price: Number(v.price) || 0, image: v.image || null, cost: Number(v.cost) || 0 }));
+}
+
+// Giá vốn của một phân loại: có giá vốn riêng (> 0) thì dùng, không thì lấy giá vốn chung của sản phẩm
+export function variantCost(product, variantName) {
+  if (!product) return 0;
+  if (variantName) {
+    const v = (product.variants || []).find((x) => x && String(x.name).trim() === String(variantName).trim());
+    if (v && Number(v.cost) > 0) return Number(v.cost);
+  }
+  return Number(product.cost) || 0;
+}
+
+// Tạo hàm tra giá vốn cho một dòng hàng trong hóa đơn (theo product_id + phân loại)
+export function makeCostOf(products) {
+  const list = products || [];
+  const byId = new Map(list.map((p) => [String(p.id), p]));
+  const byName = new Map(list.map((p) => [String(p.name || '').trim().toLowerCase(), p]));
+  return (item) => {
+    const baseName = String(item?.product_name || '').replace(/\s*—\s*.*$/, '').trim().toLowerCase();
+    const p = byId.get(String(item?.product_id)) || byName.get(baseName);
+    return variantCost(p, item?.variant);
+  };
 }
 
 // Giá hiển thị: có phân loại thì lấy giá thấp nhất
