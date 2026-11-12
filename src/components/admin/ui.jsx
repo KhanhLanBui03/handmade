@@ -1,39 +1,71 @@
 // Thành phần UI dùng chung cho trang quản trị
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { CalendarBlank, CircleNotch } from '@phosphor-icons/react';
 
-// "2026-11-09" -> "09-11-2026"; "2026-11" -> "11-2026"
+// "2026-11-09" -> "09/11/2026"; "2026-11" -> "11/2026"
 const isoToDisplay = (v, type) => {
   if (!v) return '';
   const [y, m, d] = String(v).split('-');
-  return type === 'month' ? `${m}-${y}` : `${d}-${m}-${y}`;
+  return type === 'month' ? `${m}/${y}` : `${d}/${m}/${y}`;
 };
 
-// "9-11-2026" / "09/11/2026" -> "2026-11-09"; trả về null nếu sai
-const displayToIso = (text, type) => {
-  const t = text.trim();
-  if (type === 'month') {
-    const m = /^(\d{1,2})[-/.](\d{4})$/.exec(t);
-    if (!m || +m[1] < 1 || +m[1] > 12) return null;
-    return `${m[2]}-${m[1].padStart(2, '0')}`;
-  }
-  const m = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/.exec(t);
-  if (!m) return null;
-  const [d, mo, y] = [+m[1], +m[2], +m[3]];
+const makeIso = (d, mo, y) => {
+  if (y < 1900 || y > 2100 || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
   const date = new Date(y, mo - 1, d);
   if (date.getFullYear() !== y || date.getMonth() !== mo - 1 || date.getDate() !== d) return null;
   return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 };
 
+// Hỗ trợ: "09/11/2026", "9-11-2026", "22112026" (8 số), "1082026" (7 số -> 10/08/2026), "582026" (6 số -> 05/08/2026)
+const displayToIso = (text, type) => {
+  const t = text.trim();
+  if (type === 'month') {
+    const m = /^(\d{1,2})[-/.](\d{4})$/.exec(t) || /^(\d{2})(\d{4})$/.exec(t) || /^(\d{1})(\d{4})$/.exec(t);
+    if (!m || +m[1] < 1 || +m[1] > 12) return null;
+    return `${m[2]}-${m[1].padStart(2, '0')}`;
+  }
+
+  const sep = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/.exec(t);
+  if (sep) return makeIso(+sep[1], +sep[2], +sep[3]);
+
+  // Nhập liền không cần dấu gạch: 22112026, 1082026, 582026
+  if (/^\d{8}$/.test(t)) {
+    return makeIso(+t.slice(0, 2), +t.slice(2, 4), +t.slice(4, 8));
+  }
+  if (/^\d{7}$/.test(t)) {
+    // Ưu tiên dd + m + yyyy (VD: 1082026 -> 10/08/2026), nếu không hợp lệ thì thử d + mm + yyyy (VD: 5082026 -> 05/08/2026)
+    return (
+      makeIso(+t.slice(0, 2), +t.slice(2, 3), +t.slice(3, 7)) ||
+      makeIso(+t.slice(0, 1), +t.slice(1, 3), +t.slice(3, 7))
+    );
+  }
+  if (/^\d{6}$/.test(t)) {
+    return makeIso(+t.slice(0, 1), +t.slice(1, 2), +t.slice(2, 6));
+  }
+  return null;
+};
+
 /**
- * Ô chọn ngày luôn hiển thị dạng dd-mm-yyyy (hoặc mm-yyyy khi type="month"),
- * không phụ thuộc ngôn ngữ trình duyệt. Gõ tay được, hoặc bấm biểu tượng lịch để chọn.
+ * Ô chọn ngày hiển thị dạng dd/mm/yyyy (hoặc mm/yyyy khi type="month").
+ * Hỗ trợ gõ tay liền số (VD: 22112026 -> 22/11/2026, 1082026 -> 10/08/2026) hoặc bấm lịch (tương thích iOS).
  * value / onChange dùng chuỗi ISO ("yyyy-mm-dd" hoặc "yyyy-mm").
  */
 export function DateField({ value, onChange, type = 'date', min, max, id, required, placeholder, className = '', ...rest }) {
-  const pickerRef = useRef(null);
   const [draft, setDraft] = useState(null); // chuỗi đang gõ dở
   const shown = draft ?? isoToDisplay(value, type);
+
+  const isInRange = (iso) => Boolean(iso && (!max || iso <= max) && (!min || iso >= min));
+
+  const handleType = (val) => {
+    setDraft(val);
+    const t = val.trim();
+    if (!t) {
+      if (!required) onChange('');
+      return;
+    }
+    const iso = displayToIso(t, type);
+    if (isInRange(iso)) onChange(iso);
+  };
 
   const commit = () => {
     if (draft === null) return;
@@ -42,17 +74,9 @@ export function DateField({ value, onChange, type = 'date', min, max, id, requir
       if (!required) onChange('');
     } else {
       const iso = displayToIso(t, type);
-      if (iso && (!max || iso <= max) && (!min || iso >= min)) onChange(iso);
+      if (isInRange(iso)) onChange(iso);
     }
     setDraft(null);
-  };
-
-  const openPicker = () => {
-    try {
-      pickerRef.current?.showPicker();
-    } catch {
-      pickerRef.current?.focus();
-    }
   };
 
   return (
@@ -62,25 +86,21 @@ export function DateField({ value, onChange, type = 'date', min, max, id, requir
         type="text"
         inputMode="numeric"
         value={shown}
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={(e) => handleType(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), commit())}
-        placeholder={placeholder || (type === 'month' ? 'mm-yyyy' : 'dd-mm-yyyy')}
+        placeholder={placeholder || (type === 'month' ? 'mm/yyyy' : 'dd/mm/yyyy (VD: 22112026)')}
         required={required}
         className="input w-full pr-11"
         {...rest}
       />
-      <button
-        type="button"
-        onClick={openPicker}
-        className="absolute right-1.5 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-lg text-muted hover:bg-ink/5 hover:text-ink"
-        aria-label="Mở lịch"
-        tabIndex={-1}
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute right-1.5 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-lg text-muted"
       >
         <CalendarBlank size={18} />
-      </button>
+      </span>
       <input
-        ref={pickerRef}
         type={type}
         value={value || ''}
         min={min}
@@ -89,9 +109,8 @@ export function DateField({ value, onChange, type = 'date', min, max, id, requir
           setDraft(null);
           onChange(e.target.value);
         }}
-        tabIndex={-1}
-        aria-hidden="true"
-        className="pointer-events-none absolute bottom-0 right-0 size-px opacity-0"
+        aria-label="Mở lịch"
+        className="absolute right-1.5 top-1/2 size-8 -translate-y-1/2 cursor-pointer opacity-0"
       />
     </div>
   );
