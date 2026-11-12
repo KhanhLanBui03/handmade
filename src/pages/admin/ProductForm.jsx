@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom';
 import {
   ArrowLeft,
   UploadSimple,
@@ -24,10 +24,13 @@ const newCostLine = () => ({ key: ++costSeq, name: '', cost: '' });
 export default function ProductForm() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const isEdit = Boolean(id);
+  const copyId = !isEdit ? searchParams.get('copy') : null;
+  const sourceId = id || copyId;
 
   const [loading, setLoading] = useState(false);
-  const [initialLoading, setInitialLoading] = useState(isEdit);
+  const [initialLoading, setInitialLoading] = useState(Boolean(sourceId));
   const [categories, setCategories] = useState([]);
   const [uploading, setUploading] = useState(false);
 
@@ -75,24 +78,24 @@ export default function ProductForm() {
       });
       setCostNames([...map.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'vi')));
 
-      if (isEdit) {
-        const { data: prod } = await supabase.from('products').select('*').eq('id', id).single();
+      if (sourceId) {
+        const { data: prod } = await supabase.from('products').select('*').eq('id', sourceId).single();
         if (prod) {
           setFormData({
-            name: prod.name || '',
+            name: isEdit ? prod.name || '' : prod.name ? `${prod.name} (Bản sao)` : '',
             price: prod.price || '',
             category_id: prod.category_id || '',
             description: prod.description || '',
             features: prod.features?.length > 0 ? prod.features : [''],
-            media: prod.media || [],
+            media: isEdit ? prod.media || [] : [],
             variants: (prod.variants || []).map((v) => ({
               name: v.name || '',
               price: v.price ? String(v.price) : '',
-              image: v.image || null,
+              image: isEdit ? v.image || null : null,
               cost: v.cost ? String(v.cost) : '',
             })),
           });
-          setHadVariants((prod.variants || []).length > 0);
+          setHadVariants(isEdit && (prod.variants || []).length > 0);
 
           if (prod.materials_cost && Array.isArray(prod.materials_cost)) {
             setCostItems(
@@ -110,7 +113,7 @@ export default function ProductForm() {
       setInitialLoading(false);
     }
     init();
-  }, [id, isEdit]);
+  }, [sourceId, isEdit]);
 
   const handleFeatureChange = (index, value) =>
     set({ features: formData.features.map((f, i) => (i === index ? value : f)) });
@@ -257,10 +260,14 @@ export default function ProductForm() {
           </Link>
           <div>
             <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-              {isEdit ? 'Sửa sản phẩm' : 'Thêm sản phẩm mới'}
+              {isEdit ? 'Sửa sản phẩm' : copyId ? 'Nhân bản sản phẩm' : 'Thêm sản phẩm mới'}
             </h1>
             <p className="text-sm text-muted">
-              {isEdit ? formData.name : 'Điền thông tin, nguyên liệu cấu thành và giá bán cho sản phẩm.'}
+              {isEdit
+                ? formData.name
+                : copyId
+                  ? 'Đã chép thông tin và chi phí vốn — chỉ cần sửa tên, giá và tải ảnh mới.'
+                  : 'Điền thông tin, chi phí và giá bán cho sản phẩm.'}
             </p>
           </div>
         </div>

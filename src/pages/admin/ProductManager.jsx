@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Trash, PencilSimple, MagnifyingGlass, Package, ArrowSquareOut, Eye, EyeSlash } from '@phosphor-icons/react';
+import { Plus, Trash, PencilSimple, MagnifyingGlass, Package, ArrowSquareOut, Eye, EyeSlash, Copy } from '@phosphor-icons/react';
 import { supabase } from '../../lib/supabase';
 import { formatVND, getCover, parsePrice } from '../../lib/format';
 import { PageHeader, Spinner, EmptyState, Thumb } from '../../components/admin/ui';
@@ -158,6 +158,9 @@ export default function ProductManager() {
                         <Link to={`/?sp=${p.id}`} target="_blank" className="icon-btn" aria-label={`Xem ${p.name} trên cửa hàng`} title="Xem trên cửa hàng">
                           <ArrowSquareOut size={18} />
                         </Link>
+                        <Link to={`/admin/product/new?copy=${p.id}`} className="icon-btn" aria-label={`Nhân bản ${p.name}`} title="Nhân bản">
+                          <Copy size={18} />
+                        </Link>
                         <Link to={`/admin/product/edit/${p.id}`} className="icon-btn" aria-label={`Sửa ${p.name}`} title="Sửa">
                           <PencilSimple size={18} />
                         </Link>
@@ -193,6 +196,9 @@ export default function ProductManager() {
                     <p className="text-xs text-muted">{p.categories?.name || 'Chưa phân loại'}</p>
                   </div>
                   <HideButton product={p} onToggle={toggleHidden} />
+                  <Link to={`/admin/product/new?copy=${p.id}`} className="icon-btn" aria-label={`Nhân bản ${p.name}`} title="Nhân bản">
+                    <Copy size={18} />
+                  </Link>
                   <Link to={`/admin/product/edit/${p.id}`} className="icon-btn" aria-label={`Sửa ${p.name}`}>
                     <PencilSimple size={18} />
                   </Link>

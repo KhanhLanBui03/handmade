@@ -191,7 +191,7 @@ function CheckoutStep({ onDone }) {
 
   const phoneClean = phone.replace(/[^\d+]/g, '');
   const phoneOk = /^\+?\d{9,12}$/.test(phoneClean);
-  const valid = name.trim() && phoneOk && (method === 'pickup' || address.trim()) && items.length > 0;
+  const valid = name.trim() && phoneOk && (method === 'pickup' || address.trim()) && Boolean(receiveDate) && items.length > 0;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -287,16 +287,24 @@ function CheckoutStep({ onDone }) {
 
         <div>
           <label htmlFor="co-date" className="label">
-            Ngày muốn nhận <span className="font-normal text-muted">(không bắt buộc)</span>
+            Ngày nhận hàng <span className="text-brick">*</span>
           </label>
-          <DateField id="co-date" value={receiveDate} onChange={setReceiveDate} min={today()} />
+          <DateField id="co-date" value={receiveDate} onChange={setReceiveDate} min={today()} required />
         </div>
 
         <div>
           <label htmlFor="co-note" className="label">
-            Ghi chú cho shop <span className="font-normal text-muted">(không bắt buộc)</span>
+            Ghi chú — Tên ghi trên cúp (nếu có) <span className="font-normal text-muted">(không bắt buộc)</span>
           </label>
-          <textarea id="co-note" rows={3} value={note} onChange={(e) => setNote(e.target.value)} maxLength={1000} className="input" placeholder="Màu giấy gói, lời chúc trên thiệp, giờ nhận..." />
+          <textarea
+            id="co-note"
+            rows={3}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            maxLength={1000}
+            className="input"
+            placeholder="Tên ghi trên cúp (nếu có), màu giấy gói, lời chúc trên thiệp, giờ nhận..."
+          />
         </div>
 
         <div className="rounded-xl border border-line bg-surface p-3 text-sm">

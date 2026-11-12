@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { startOfDay, endOfDay } from 'date-fns';
+import { startOfDay, endOfDay, format, parseISO } from 'date-fns';
 import {
   CheckCircle, CircleNotch, Minus, Plus, MagnifyingGlass, Trash, ShoppingBagOpen,
   CurrencyCircleDollar, Receipt, Package, WarningCircle, ShareNetwork, Printer, TrendUp,
@@ -52,7 +52,15 @@ export default function Dashboard() {
   const [otherFeeName, setOtherFeeName] = useState('');
   const [feeNames, setFeeNames] = useState([]); // tên phí đã dùng → gợi ý
   const [receiveDate, setReceiveDate] = useState(''); // ngày khách nhận hàng (không bắt buộc)
+  const [recordOnReceiveDate, setRecordOnReceiveDate] = useState(false); // tính doanh thu vào ngày nhận (khi nhập đơn cũ)
   const [shippingFee, setShippingFee] = useState('');
+
+  const handleReceiveDateChange = (val) => {
+    setReceiveDate(val);
+    // Nếu chọn ngày nhận ở quá khứ hoặc hôm nay → tự động bật tính doanh thu vào ngày đó
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    setRecordOnReceiveDate(Boolean(val && val <= todayStr));
+  };
   const [lastOrder, setLastOrder] = useState(null); // hóa đơn vừa lưu, để gửi/in cho khách
   const invoice = useInvoiceExport();
 
@@ -119,7 +127,12 @@ export default function Dashboard() {
       price: i.price,
     }));
     const order = { total_amount: total, items };
-    if (receiveDate) order.receive_date = receiveDate;
+    if (receiveDate) {
+      order.receive_date = receiveDate;
+      if (recordOnReceiveDate) {
+        order.created_at = new Date(`${receiveDate}T12:00:00`).toISOString();
+      }
+    }
     // Chỉ gửi khi có nhập, để vẫn lưu được nếu Supabase chưa có 2 cột này
     if (customerName.trim()) order.customer_name = customerName.trim();
     if (orderNote.trim()) order.note = orderNote.trim();
@@ -141,6 +154,7 @@ export default function Dashboard() {
       setOtherFeeName('');
       loadFeeNames().then(setFeeNames);
       setReceiveDate('');
+      setRecordOnReceiveDate(false);
       setShippingFee('');
       loadTodayStats(products).then(setToday);
     }
@@ -295,7 +309,21 @@ export default function Dashboard() {
                 <label htmlFor="receive-date" className="label">
                   Ngày nhận <span className="font-normal text-muted">(không bắt buộc)</span>
                 </label>
-                <DateField id="receive-date" value={receiveDate} onChange={setReceiveDate} />
+                <DateField id="receive-date" value={receiveDate} onChange={handleReceiveDateChange} />
+                {receiveDate && (
+                  <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs text-muted">
+                    <input
+                      type="checkbox"
+                      checked={recordOnReceiveDate}
+                      onChange={(e) => setRecordOnReceiveDate(e.target.checked)}
+                      className="size-4 accent-brick"
+                    />
+                    <span>
+                      Tính doanh thu & thu nhập vào ngày{' '}
+                      <strong className="text-ink">{format(parseISO(receiveDate), 'dd-MM-yyyy')}</strong>
+                    </span>
+                  </label>
+                )}
               </div>
               <div>
                 <label htmlFor="customer-name" className="label">

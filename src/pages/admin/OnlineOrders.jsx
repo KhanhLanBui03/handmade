@@ -17,23 +17,27 @@ import {
   ShoppingBag,
   DownloadSimple,
   CheckCircle,
+  PencilSimple,
+  Plus,
+  Check,
 } from '@phosphor-icons/react';
 import { supabase } from '../../lib/supabase';
 import { insertOrder, loadFeeNames } from '../../lib/saveOrder';
+import { sellablesOf } from '../../lib/variants';
 import ProductPeek from '../../components/admin/ProductPeek';
 import { useInvoiceExport } from '../../components/admin/useInvoiceExport';
 import { formatVND, getCover, shortId } from '../../lib/format';
-import { PageHeader, Spinner, EmptyState, Thumb } from '../../components/admin/ui';
+import { PageHeader, Spinner, EmptyState, Thumb, DateField } from '../../components/admin/ui';
 
 const STATUS = {
-  new: { label: 'Mới', cls: 'bg-sunflower/20 text-[#8a5a00]' },
-  confirmed: { label: 'Đang giao', cls: 'bg-blush text-brick' },
+  new: { label: 'Chờ xác nhận', cls: 'bg-sunflower/20 text-[#8a5a00]' },
+  confirmed: { label: 'Chờ giao hàng', cls: 'bg-blush text-brick' },
   done: { label: 'Hoàn thành', cls: 'bg-sage-soft text-sage' },
   cancelled: { label: 'Đã hủy', cls: 'bg-ink/10 text-muted' },
 };
 const TABS = [
-  { v: 'new', label: 'Mới' },
-  { v: 'confirmed', label: 'Đang giao' },
+  { v: 'new', label: 'Chờ xác nhận' },
+  { v: 'confirmed', label: 'Chờ giao hàng' },
   { v: 'done', label: 'Hoàn thành' },
   { v: 'cancelled', label: 'Đã hủy' },
   { v: 'all', label: 'Tất cả' },
@@ -64,6 +68,75 @@ export default function OnlineOrders() {
   const otherOf = (o) => (feeDrafts[o.id]?.amount !== undefined ? toNumber(feeDrafts[o.id].amount) : Number(o.other_fee) || 0);
   const otherNameOf = (o) => (feeDrafts[o.id]?.name !== undefined ? feeDrafts[o.id].name : o.other_fee_name || '');
   const setFee = (id, patch) => setFeeDrafts((d) => ({ ...d, [id]: { ...d[id], ...patch } }));
+
+  // Sửa sản phẩm / ngày nhận / ghi chú trong đơn
+  const [editingId, setEditingId] = useState(null);
+  const [draftItems, setDraftItems] = useState([]);
+  const [draftDate, setDraftDate] = useState('');
+  const [draftNote, setDraftNote] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  const sellables = useMemo(() => products.flatMap(sellablesOf), [products]);
+
+  const startEdit = (order) => {
+    setEditingId(order.id);
+    setDraftItems((order.items || []).map((i) => ({ ...i, quantity: String(i.quantity), price: String(i.price) })));
+    setDraftDate(order.receive_date || '');
+    setDraftNote(order.note || '');
+  };
+  const cancelEdit = () => {
+    setEditingId(null);
+    setDraftItems([]);
+  };
+  const updateDraftItem = (idx, patch) =>
+    setDraftItems((list) => list.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
+  const removeDraftItem = (idx) => setDraftItems((list) => list.filter((_, i) => i !== idx));
+  const addDraftProduct = (sellableKey) => {
+    const s = sellables.find((x) => x.key === sellableKey);
+    if (!s) return;
+    setDraftItems((list) => {
+      const existing = list.findIndex(
+        (it) => String(it.product_id) === String(s.product.id) && (it.variant || null) === (s.variant || null),
+      );
+      if (existing >= 0) {
+        return list.map((it, i) => (i === existing ? { ...it, quantity: String(toNumber(it.quantity) + 1) } : it));
+      }
+      return [
+        ...list,
+        { product_id: s.product.id, product_name: s.label, variant: s.variant, quantity: '1', price: String(s.price) },
+      ];
+    });
+  };
+  const addCustomDraftItem = () =>
+    setDraftItems((list) => [...list, { product_id: null, product_name: '', variant: null, quantity: '1', price: '' }]);
+
+  const draftSubtotal = draftItems.reduce((s, i) => s + toNumber(i.quantity) * toNumber(i.price), 0);
+  const draftValid =
+    draftItems.length > 0 && draftItems.every((i) => String(i.product_name || '').trim() && toNumber(i.quantity) > 0);
+
+  const saveEdit = async () => {
+    if (!draftValid || savingEdit) return;
+    setSavingEdit(true);
+    const items = draftItems.map((i) => ({
+      product_id: i.product_id || null,
+      product_name: String(i.product_name).trim(),
+      variant: i.variant || null,
+      quantity: toNumber(i.quantity),
+      price: toNumber(i.price),
+    }));
+    const total_amount = items.reduce((s, i) => s + i.quantity * i.price, 0);
+    const patch = {
+      items,
+      total_amount,
+      receive_date: draftDate || null,
+      note: draftNote.trim() || null,
+    };
+    const { data, error } = await supabase.from('customer_orders').update(patch).eq('id', editingId).select().single();
+    setSavingEdit(false);
+    if (error) return alert('Không lưu được thay đổi: ' + error.message);
+    replace(data);
+    cancelEdit();
+  };
 
   // Sản phẩm để hiện ảnh & mở chi tiết (lấy đủ cột, kể cả danh mục)
   useEffect(() => {
@@ -131,9 +204,8 @@ export default function OnlineOrders() {
     return inv;
   };
 
-  // Mới → "Xác nhận & tải phiếu": lưu tiền ship, chuyển sang Đang giao, tải ảnh phiếu mua hàng để gửi khách.
-  // CHƯA tạo hóa đơn nên chưa tính vào doanh thu.
-  const confirmAndSend = async (order) => {
+  // Chờ xác nhận → "Xác nhận đơn": lưu tiền ship & phí khác, chuyển sang Chờ giao hàng (chưa tải phiếu, chưa tính doanh thu).
+  const confirmOrder = async (order) => {
     const ship = shipOf(order);
     setBusyId(order.id);
     const patch = { status: 'confirmed' };
@@ -154,7 +226,6 @@ export default function OnlineOrders() {
       );
     }
     replace(data);
-    await downloadSlip(data);
   };
   // Tải (hoặc tải lại) ảnh phiếu mua hàng: máy tính tải file ảnh về, điện thoại mở bảng chia sẻ (Zalo...)
   const downloadSlip = (order) => invoice.sendImage({ ...toInvoice(order), id: order.id, created_at: order.created_at });
@@ -201,7 +272,7 @@ export default function OnlineOrders() {
     <div>
       <PageHeader
         title="Đơn online"
-        description="Mới (điền tiền ship, phí khác) → Xác nhận & tải phiếu gửi khách → Đang giao → Hoàn thành. Chỉ tính doanh thu khi bấm Hoàn thành."
+        description="Chờ xác nhận (sửa món, điền ship/phí khác) → Chờ giao hàng (tải ảnh phiếu mua hàng) → Hoàn thành. Doanh thu & lợi nhuận tính theo ngày hoàn thành."
       />
 
       {missingTable && (
@@ -244,7 +315,7 @@ export default function OnlineOrders() {
         <div className="card">
           <EmptyState
             icon={ShoppingBag}
-            title={tab === 'new' ? 'Chưa có đơn mới' : 'Không có đơn nào'}
+            title={tab === 'new' ? 'Chưa có đơn chờ xác nhận' : 'Không có đơn nào'}
             text="Khi khách đặt hàng trên website, đơn sẽ hiện ở đây."
           />
         </div>
@@ -253,6 +324,7 @@ export default function OnlineOrders() {
           {visible.map((o) => {
             const st = STATUS[o.status] || STATUS.new;
             const busy = busyId === o.id;
+            const isEditing = editingId === o.id;
             return (
               <li key={o.id} className="card overflow-hidden">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-paper-dim/40 px-5 py-3">
@@ -282,148 +354,261 @@ export default function OnlineOrders() {
                         <><Truck size={18} className="mt-px shrink-0" /> <span className="text-ink">{o.address}</span></>
                       )}
                     </p>
-                    {o.receive_date && (
-                      <p className="flex items-center gap-2 text-muted">
-                        <CalendarBlank size={18} className="shrink-0" /> Muốn nhận ngày{' '}
-                        <span className="font-medium text-ink">{format(parseISO(o.receive_date), 'dd-MM-yyyy')}</span>
-                      </p>
-                    )}
-                    {o.note && (
-                      <p className="flex items-start gap-2 text-muted">
-                        <NotePencil size={18} className="mt-px shrink-0" /> <span className="whitespace-pre-wrap text-ink">{o.note}</span>
-                      </p>
+                    {isEditing ? (
+                      <div className="space-y-2 pt-1">
+                        <div>
+                          <label className="label text-xs">Ngày nhận hàng</label>
+                          <DateField value={draftDate} onChange={setDraftDate} />
+                        </div>
+                        <div>
+                          <label className="label text-xs">Ghi chú / Tên ghi trên cúp</label>
+                          <textarea
+                            rows={2}
+                            value={draftNote}
+                            onChange={(e) => setDraftNote(e.target.value)}
+                            placeholder="Ghi chú, tên ghi trên cúp..."
+                            className="input text-sm"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {o.receive_date && (
+                          <p className="flex items-center gap-2 text-muted">
+                            <CalendarBlank size={18} className="shrink-0" /> Ngày nhận{' '}
+                            <span className="font-medium text-ink">{format(parseISO(o.receive_date), 'dd-MM-yyyy')}</span>
+                          </p>
+                        )}
+                        {o.note && (
+                          <p className="flex items-start gap-2 text-muted">
+                            <NotePencil size={18} className="mt-px shrink-0" /> <span className="whitespace-pre-wrap text-ink">{o.note}</span>
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
 
                   {/* Sản phẩm */}
                   <div>
-                    <ul className="space-y-2 text-sm">
-                      {(o.items || []).map((it, idx) => {
-                        const prod = productOf(it);
-                        return (
-                          <li key={idx} className="flex items-center justify-between gap-4">
-                            <button
-                              type="button"
-                              onClick={() => setPeek({ product: prod, name: it.product_name })}
-                              className="group flex min-w-0 items-center gap-3 rounded-lg text-left"
-                              title="Xem chi tiết sản phẩm"
-                            >
-                              <Thumb src={prod ? getCover(prod) : null} className="size-11 transition group-hover:ring-2 group-hover:ring-brick" />
-                              <span className="min-w-0">
-                                <span className="font-semibold text-muted">{it.quantity}×</span>{' '}
-                                <span className="font-medium underline-offset-2 group-hover:text-brick group-hover:underline">{it.product_name}</span>
-                              </span>
-                            </button>
-                            <span className="shrink-0 text-muted">{formatVND(it.quantity * it.price)}</span>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                    <div className="mt-3 space-y-2 border-t border-line pt-3 text-sm">
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted">Tiền hàng</span>
-                        <span className="font-medium">{formatVND(o.total_amount)}</span>
+                    {isEditing ? (
+                      <div className="space-y-2.5">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-muted">Sửa sản phẩm trong phiếu</p>
+                        <div className="space-y-2">
+                          {draftItems.map((it, idx) => (
+                            <div key={idx} className="grid grid-cols-12 items-center gap-1.5 rounded-xl border border-line bg-paper/60 p-2">
+                              <input
+                                type="text"
+                                value={it.product_name}
+                                onChange={(e) => updateDraftItem(idx, { product_name: e.target.value })}
+                                placeholder="Tên sản phẩm"
+                                aria-label={`Tên sản phẩm ${idx + 1}`}
+                                className="input col-span-12 h-9 text-sm sm:col-span-5"
+                              />
+                              <input
+                                type="number"
+                                min="1"
+                                value={it.quantity}
+                                onChange={(e) => updateDraftItem(idx, { quantity: e.target.value })}
+                                placeholder="SL"
+                                aria-label={`Số lượng ${idx + 1}`}
+                                className="input col-span-4 h-9 text-center text-sm sm:col-span-2"
+                              />
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={toNumber(it.price) ? toNumber(it.price).toLocaleString('vi-VN') : ''}
+                                onChange={(e) => updateDraftItem(idx, { price: e.target.value })}
+                                placeholder="Đơn giá"
+                                aria-label={`Đơn giá ${idx + 1}`}
+                                className="input col-span-6 h-9 text-right text-sm sm:col-span-4"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeDraftItem(idx)}
+                                className="icon-btn col-span-2 size-9 justify-self-end hover:text-brick sm:col-span-1"
+                                title="Xóa món"
+                                aria-label="Xóa món"
+                              >
+                                <X size={15} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <select
+                            value=""
+                            onChange={(e) => e.target.value && addDraftProduct(e.target.value)}
+                            className="input h-9 min-w-0 flex-1 text-sm"
+                            aria-label="Thêm sản phẩm có sẵn"
+                          >
+                            <option value="">+ Thêm sản phẩm từ cửa hàng…</option>
+                            {sellables.map((s) => (
+                              <option key={s.key} value={s.key}>
+                                {s.label} — {formatVND(s.price)}
+                              </option>
+                            ))}
+                          </select>
+                          <button type="button" onClick={addCustomDraftItem} className="btn btn-outline btn-sm shrink-0">
+                            <Plus size={14} weight="bold" /> Tự nhập món
+                          </button>
+                        </div>
+
+                        <div className="flex items-center justify-between border-t border-line pt-2 text-sm">
+                          <span className="text-muted">Tiền hàng mới</span>
+                          <span className="text-base font-semibold text-brick">{formatVND(draftSubtotal)}</span>
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between gap-3">
-                        <label htmlFor={`ship-${o.id}`} className="text-muted">Tiền ship</label>
-                        {o.status === 'new' ? (
-                          <input
-                            id={`ship-${o.id}`}
-                            type="text"
-                            inputMode="numeric"
-                            value={shipOf(o) ? shipOf(o).toLocaleString('vi-VN') : ''}
-                            onChange={(e) => setShipDrafts((d) => ({ ...d, [o.id]: e.target.value }))}
-                            placeholder={o.delivery_method === 'pickup' ? 'Tự lấy — để trống' : 'Shop điền, VD: 30.000'}
-                            className="input h-9 w-44 text-right text-sm"
-                          />
-                        ) : (
-                          <span className="font-medium">{Number(o.shipping_fee) > 0 ? formatVND(o.shipping_fee) : '—'}</span>
-                        )}
-                      </div>
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="shrink-0 text-muted">Phí khác</span>
-                        {o.status === 'new' ? (
-                          <div className="flex min-w-0 gap-2">
-                            <input
-                              type="text"
-                              list="online-fee-names"
-                              autoComplete="off"
-                              value={otherNameOf(o)}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                // Chọn lại tên đã dùng → tự điền số tiền lần trước (nếu chưa nhập)
-                                const hit = feeNames.find((f) => f.name.toLowerCase() === v.trim().toLowerCase());
-                                setFee(o.id, hit && hit.amount && !otherOf(o) ? { name: v, amount: String(hit.amount) } : { name: v });
-                              }}
-                              placeholder="Tên: thiệp, gói quà..."
-                              aria-label="Tên phí khác"
-                              className="input h-9 min-w-0 flex-1 text-sm"
-                            />
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              value={otherOf(o) ? otherOf(o).toLocaleString('vi-VN') : ''}
-                              onChange={(e) => setFee(o.id, { amount: e.target.value })}
-                              placeholder="Số tiền"
-                              aria-label="Số tiền phí khác"
-                              className="input h-9 w-28 text-right text-sm"
-                            />
+                    ) : (
+                      <>
+                        <ul className="space-y-2 text-sm">
+                          {(o.items || []).map((it, idx) => {
+                            const prod = productOf(it);
+                            return (
+                              <li key={idx} className="flex items-center justify-between gap-4">
+                                <button
+                                  type="button"
+                                  onClick={() => setPeek({ product: prod, name: it.product_name })}
+                                  className="group flex min-w-0 items-center gap-3 rounded-lg text-left"
+                                  title="Xem chi tiết sản phẩm"
+                                >
+                                  <Thumb src={prod ? getCover(prod) : null} className="size-11 transition group-hover:ring-2 group-hover:ring-brick" />
+                                  <span className="min-w-0">
+                                    <span className="font-semibold text-muted">{it.quantity}×</span>{' '}
+                                    <span className="font-medium underline-offset-2 group-hover:text-brick group-hover:underline">{it.product_name}</span>
+                                  </span>
+                                </button>
+                                <span className="shrink-0 text-muted">{formatVND(it.quantity * it.price)}</span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                        <div className="mt-3 space-y-2 border-t border-line pt-3 text-sm">
+                          <div className="flex items-center justify-between">
+                            <span className="text-muted">Tiền hàng</span>
+                            <span className="font-medium">{formatVND(o.total_amount)}</span>
                           </div>
-                        ) : (
-                          <span className="font-medium">
-                            {Number(o.other_fee) > 0
-                              ? `${o.other_fee_name ? `${o.other_fee_name} · ` : ''}${formatVND(o.other_fee)}`
-                              : '—'}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center justify-between border-t border-line pt-2">
-                        <span className="font-medium">Tổng thanh toán</span>
-                        <span className="text-lg font-semibold text-brick">{formatVND(Number(o.total_amount) + shipOf(o) + otherOf(o))}</span>
-                      </div>
-                    </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <label htmlFor={`ship-${o.id}`} className="text-muted">Tiền ship</label>
+                            {o.status === 'new' ? (
+                              <input
+                                id={`ship-${o.id}`}
+                                type="text"
+                                inputMode="numeric"
+                                value={shipOf(o) ? shipOf(o).toLocaleString('vi-VN') : ''}
+                                onChange={(e) => setShipDrafts((d) => ({ ...d, [o.id]: e.target.value }))}
+                                placeholder={o.delivery_method === 'pickup' ? 'Tự lấy — để trống' : 'Shop điền, VD: 30.000'}
+                                className="input h-9 w-44 text-right text-sm"
+                              />
+                            ) : (
+                              <span className="font-medium">{Number(o.shipping_fee) > 0 ? formatVND(o.shipping_fee) : '—'}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="shrink-0 text-muted">Phí khác</span>
+                            {o.status === 'new' ? (
+                              <div className="flex min-w-0 gap-2">
+                                <input
+                                  type="text"
+                                  list="online-fee-names"
+                                  autoComplete="off"
+                                  value={otherNameOf(o)}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    // Chọn lại tên đã dùng → tự điền số tiền lần trước (nếu chưa nhập)
+                                    const hit = feeNames.find((f) => f.name.toLowerCase() === v.trim().toLowerCase());
+                                    setFee(o.id, hit && hit.amount && !otherOf(o) ? { name: v, amount: String(hit.amount) } : { name: v });
+                                  }}
+                                  placeholder="Tên: thiệp, gói quà..."
+                                  aria-label="Tên phí khác"
+                                  className="input h-9 min-w-0 flex-1 text-sm"
+                                />
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={otherOf(o) ? otherOf(o).toLocaleString('vi-VN') : ''}
+                                  onChange={(e) => setFee(o.id, { amount: e.target.value })}
+                                  placeholder="Số tiền"
+                                  aria-label="Số tiền phí khác"
+                                  className="input h-9 w-28 text-right text-sm"
+                                />
+                              </div>
+                            ) : (
+                              <span className="font-medium">
+                                {Number(o.other_fee) > 0
+                                  ? `${o.other_fee_name ? `${o.other_fee_name} · ` : ''}${formatVND(o.other_fee)}`
+                                  : '—'}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center justify-between border-t border-line pt-2">
+                            <span className="font-medium">Tổng thanh toán</span>
+                            <span className="text-lg font-semibold text-brick">{formatVND(Number(o.total_amount) + shipOf(o) + otherOf(o))}</span>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
 
                 {/* Thao tác */}
                 <div className="flex flex-wrap items-center justify-end gap-2 border-t border-line px-5 py-3">
-                  {busy && <CircleNotch size={18} className="mr-auto animate-spin text-muted" />}
-                  {o.status === 'new' && (
+                  {(busy || savingEdit) && <CircleNotch size={18} className="mr-auto animate-spin text-muted" />}
+                  {isEditing ? (
                     <>
-                      <button type="button" disabled={busy} onClick={() => setStatus(o, 'cancelled')} className="btn btn-ghost btn-sm text-muted">
-                        <X size={16} /> Hủy đơn
+                      <button type="button" disabled={savingEdit} onClick={cancelEdit} className="btn btn-ghost btn-sm text-muted">
+                        <X size={16} /> Hủy sửa
                       </button>
-                      <button type="button" disabled={busy || invoice.busy} onClick={() => confirmAndSend(o)} className="btn btn-primary btn-sm">
-                        <DownloadSimple size={16} weight="bold" /> Xác nhận & tải phiếu mua hàng
+                      <button type="button" disabled={!draftValid || savingEdit} onClick={saveEdit} className="btn btn-primary btn-sm">
+                        <Check size={16} weight="bold" /> Lưu thay đổi
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      {o.status === 'new' && (
+                        <>
+                          <button type="button" disabled={busy} onClick={() => setStatus(o, 'cancelled')} className="btn btn-ghost btn-sm text-muted">
+                            <X size={16} /> Hủy đơn
+                          </button>
+                          <button type="button" disabled={busy} onClick={() => startEdit(o)} className="btn btn-outline btn-sm">
+                            <PencilSimple size={16} /> Sửa
+                          </button>
+                          <button type="button" disabled={busy} onClick={() => confirmOrder(o)} className="btn btn-primary btn-sm">
+                            <CheckCircle size={16} weight="bold" /> Xác nhận đơn
+                          </button>
+                        </>
+                      )}
+                      {o.status === 'confirmed' && (
+                        <>
+                          <button type="button" disabled={busy} onClick={() => setStatus(o, 'cancelled')} className="btn btn-ghost btn-sm text-muted">
+                            <X size={16} /> Hủy đơn
+                          </button>
+                          <button type="button" disabled={busy} onClick={() => startEdit(o)} className="btn btn-outline btn-sm">
+                            <PencilSimple size={16} /> Sửa
+                          </button>
+                          <button type="button" disabled={busy || invoice.busy} onClick={() => downloadSlip(o)} className="btn btn-outline btn-sm">
+                            <DownloadSimple size={16} /> Tải ảnh phiếu mua hàng
+                          </button>
+                          <button type="button" disabled={busy} onClick={() => completeOrder(o)} className="btn btn-accent btn-sm">
+                            <CheckCircle size={16} weight="bold" /> Hoàn thành đơn
+                          </button>
+                        </>
+                      )}
+                      {o.status === 'done' && o.invoice_id && (
+                        <Link to="/admin/stats" className="btn btn-ghost btn-sm text-sage">
+                          <Receipt size={16} /> Đã tạo hóa đơn #{shortId(o.invoice_id)}
+                        </Link>
+                      )}
+                      {o.status === 'cancelled' && (
+                        <button type="button" disabled={busy} onClick={() => setStatus(o, 'new')} className="btn btn-ghost btn-sm">
+                          <ArrowCounterClockwise size={16} /> Khôi phục
+                        </button>
+                      )}
+                      <button type="button" onClick={() => remove(o)} className="icon-btn hover:bg-brick/10 hover:text-brick" aria-label={`Xóa đơn #${shortId(o.id)}`}>
+                        <Trash size={18} />
                       </button>
                     </>
                   )}
-                  {o.status === 'confirmed' && (
-                    <>
-                      <button type="button" disabled={busy} onClick={() => setStatus(o, 'cancelled')} className="btn btn-ghost btn-sm text-muted">
-                        <X size={16} /> Hủy đơn
-                      </button>
-                      <button type="button" disabled={busy || invoice.busy} onClick={() => downloadSlip(o)} className="btn btn-outline btn-sm">
-                        <DownloadSimple size={16} /> Tải lại phiếu
-                      </button>
-                      <button type="button" disabled={busy} onClick={() => completeOrder(o)} className="btn btn-accent btn-sm">
-                        <CheckCircle size={16} weight="bold" /> Hoàn thành đơn
-                      </button>
-                    </>
-                  )}
-                  {o.status === 'done' && o.invoice_id && (
-                    <Link to="/admin/stats" className="btn btn-ghost btn-sm text-sage">
-                      <Receipt size={16} /> Đã tạo hóa đơn #{shortId(o.invoice_id)}
-                    </Link>
-                  )}
-                  {o.status === 'cancelled' && (
-                    <button type="button" disabled={busy} onClick={() => setStatus(o, 'new')} className="btn btn-ghost btn-sm">
-                      <ArrowCounterClockwise size={16} /> Khôi phục
-                    </button>
-                  )}
-                  <button type="button" onClick={() => remove(o)} className="icon-btn hover:bg-brick/10 hover:text-brick" aria-label={`Xóa đơn #${shortId(o.id)}`}>
-                    <Trash size={18} />
-                  </button>
                 </div>
               </li>
             );

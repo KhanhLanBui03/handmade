@@ -5,7 +5,6 @@ import {
   startOfMonth,
   endOfMonth,
   subMonths,
-  startOfYear,
   subDays,
   startOfDay,
   endOfDay,
@@ -35,42 +34,34 @@ import Pagination from '../../components/Pagination';
 
 const WEEK = { weekStartsOn: 1 }; // tuần bắt đầu từ thứ Hai
 const RANGES = [
-  { v: 'this-week', label: 'Tuần này' },
-  { v: 'last-week', label: 'Tuần trước' },
-  { v: 'this-month', label: 'Tháng này' },
   { v: 'last-month', label: 'Tháng trước' },
-  { v: '30d', label: '30 ngày qua' },
-  { v: 'this-year', label: 'Năm nay' },
-  { v: 'all', label: 'Tất cả' },
-  { v: 'month', label: 'Chọn tháng' },
+  { v: 'last-week', label: 'Tuần trước' },
+  { v: '7d', label: '7 ngày qua' },
 ];
 
-function rangeOf(v, month) {
+function rangeOf(v, fromDate, toDate) {
   const now = new Date();
   switch (v) {
-    case 'this-week':
-      return [startOfWeek(now, WEEK), endOfDay(now)];
-    case 'last-week': {
-      const w = subWeeks(now, 1);
-      return [startOfWeek(w, WEEK), endOfWeek(w, WEEK)];
-    }
-    case 'this-month':
-      return [startOfMonth(now), endOfDay(now)];
     case 'last-month': {
       const m = subMonths(now, 1);
       return [startOfMonth(m), endOfMonth(m)];
     }
-    case '30d':
-      return [startOfDay(subDays(now, 29)), endOfDay(now)];
-    case 'this-year':
-      return [startOfYear(now), endOfDay(now)];
-    case 'month': {
-      if (!month) return null;
-      const m = parseISO(`${month}-01`);
-      return [startOfMonth(m), endOfMonth(m)];
+    case 'last-week': {
+      const w = subWeeks(now, 1);
+      return [startOfWeek(w, WEEK), endOfWeek(w, WEEK)];
+    }
+    case '7d':
+      return [startOfDay(subDays(now, 6)), endOfDay(now)];
+    case 'custom': {
+      const s = fromDate ? startOfDay(parseISO(fromDate)) : null;
+      const e = toDate ? endOfDay(parseISO(toDate)) : null;
+      if (s && e) return s <= e ? [s, e] : [startOfDay(parseISO(toDate)), endOfDay(parseISO(fromDate))];
+      if (s) return [s, endOfDay(now)];
+      if (e) return [startOfDay(new Date(2020, 0, 1)), e];
+      return null;
     }
     default:
-      return null; // tất cả
+      return [startOfDay(subDays(now, 6)), endOfDay(now)];
   }
 }
 
@@ -91,8 +82,9 @@ const num = (v) => Number(v) || 0;
 
 export default function SalesStats() {
   const [tab, setTab] = useState('invoices');
-  const [rangeKey, setRangeKey] = useState('this-month');
-  const [month, setMonth] = useState(format(new Date(), 'yyyy-MM'));
+  const [rangeKey, setRangeKey] = useState('7d');
+  const [fromDate, setFromDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [toDate, setToDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [orders, setOrders] = useState([]);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -118,7 +110,7 @@ export default function SalesStats() {
     async function load() {
       setLoading(true);
       // Supabase chỉ trả tối đa 1000 dòng mỗi lần → tải từng đợt cho đến hết
-      const r = rangeOf(rangeKey, month);
+      const r = rangeOf(rangeKey, fromDate, toDate);
       const PAGE = 1000;
       const all = [];
       for (let from = 0; ; from += PAGE) {
@@ -142,7 +134,7 @@ export default function SalesStats() {
     return () => {
       cancelled = true;
     };
-  }, [rangeKey, month]);
+  }, [rangeKey, fromDate, toDate]);
 
   // Giá vốn mỗi món — theo giá vốn riêng của từng phân loại, không có thì lấy giá vốn chung
   const costOf = useMemo(() => makeCostOf(products), [products]);
@@ -229,7 +221,7 @@ export default function SalesStats() {
   const prodCurPage = Math.min(prodPage, prodTotalPages);
   const pageProducts = sorted.slice((prodCurPage - 1) * PRODUCTS_PER_PAGE, prodCurPage * PRODUCTS_PER_PAGE);
 
-  const r = rangeOf(rangeKey, month);
+  const r = rangeOf(rangeKey, fromDate, toDate);
   const rangeLabel = r ? `${format(r[0], 'dd-MM-yyyy')} → ${format(r[1], 'dd-MM-yyyy')}` : 'Toàn bộ thời gian';
 
   return (
@@ -258,23 +250,50 @@ export default function SalesStats() {
       </div>
 
       {/* Bộ lọc thời gian — gọn, dùng chung cho mọi tab */}
-      <div className="mb-4 flex flex-wrap items-center gap-1.5">
-        {RANGES.map((o) => (
-          <button
-            key={o.v}
-            type="button"
-            onClick={() => setRangeKey(o.v)}
-            aria-pressed={rangeKey === o.v}
-            className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
-              rangeKey === o.v ? 'bg-brick text-white' : 'bg-surface text-muted ring-1 ring-line hover:text-ink'
-            }`}
-          >
-            {o.label}
-          </button>
-        ))}
-        {rangeKey === 'month' && (
-          <DateField type="month" value={month} onChange={(v) => v && setMonth(v)} className="w-32 [&_.input]:h-8 [&_.input]:text-xs" aria-label="Chọn tháng" />
-        )}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {RANGES.map((o) => (
+            <button
+              key={o.v}
+              type="button"
+              onClick={() => setRangeKey(o.v)}
+              aria-pressed={rangeKey === o.v}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                rangeKey === o.v ? 'bg-brick text-white' : 'bg-surface text-muted ring-1 ring-line hover:text-ink'
+              }`}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+
+        <div
+          className={`flex flex-wrap items-center gap-1.5 rounded-full px-2.5 py-1 text-xs ring-1 transition-colors ${
+            rangeKey === 'custom' ? 'bg-blush/50 ring-brick' : 'bg-surface ring-line'
+          }`}
+        >
+          <span className="font-medium text-muted">Từ</span>
+          <DateField
+            value={fromDate}
+            onChange={(v) => {
+              setFromDate(v);
+              setRangeKey('custom');
+            }}
+            aria-label="Ngày bắt đầu"
+            className="w-32 [&_.input]:h-7 [&_.input]:border-0 [&_.input]:bg-transparent [&_.input]:px-1 [&_.input]:text-xs"
+          />
+          <span className="font-medium text-muted">đến</span>
+          <DateField
+            value={toDate}
+            onChange={(v) => {
+              setToDate(v);
+              setRangeKey('custom');
+            }}
+            aria-label="Ngày kết thúc"
+            className="w-32 [&_.input]:h-7 [&_.input]:border-0 [&_.input]:bg-transparent [&_.input]:px-1 [&_.input]:text-xs"
+          />
+        </div>
+
         <span className="ml-auto text-xs text-muted">{rangeLabel}</span>
       </div>
 

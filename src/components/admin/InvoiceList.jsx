@@ -38,6 +38,7 @@ export default function InvoiceList({ orders, setOrders, products, costOf }) {
   const [draftOtherName, setDraftOtherName] = useState('');
   const [draftShip, setDraftShip] = useState('');
   const [draftDate, setDraftDate] = useState('');
+  const [draftCreatedDate, setDraftCreatedDate] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
   const [page, setPage] = useState(1);
 
@@ -58,6 +59,7 @@ export default function InvoiceList({ orders, setOrders, products, costOf }) {
     setDraftOtherName(order.other_fee_name || '');
     setDraftShip(order.shipping_fee ? String(order.shipping_fee) : '');
     setDraftDate(order.receive_date || '');
+    setDraftCreatedDate(order.created_at ? format(parseISO(order.created_at), 'yyyy-MM-dd') : '');
   };
   const cancelEdit = () => {
     setEditingId(null);
@@ -88,6 +90,10 @@ export default function InvoiceList({ orders, setOrders, products, costOf }) {
     const total_amount = sumOrder(items) + ship + otherFee;
     const patch = { items, total_amount };
     const current = orders.find((o) => o.id === editingId) || {};
+    const origCreatedDate = current.created_at ? format(parseISO(current.created_at), 'yyyy-MM-dd') : '';
+    if (draftCreatedDate && draftCreatedDate !== origCreatedDate) {
+      patch.created_at = new Date(`${draftCreatedDate}T12:00:00`).toISOString();
+    }
     if ((draftDate || null) !== (current.receive_date || null)) patch.receive_date = draftDate || null;
     if (draftCustomer.trim() || current.customer_name) patch.customer_name = draftCustomer.trim() || null;
     if (draftNote.trim() || current.note) patch.note = draftNote.trim() || null;
@@ -142,13 +148,26 @@ export default function InvoiceList({ orders, setOrders, products, costOf }) {
               {isEditing ? (
                 <div className="min-w-0 flex-1 space-y-2">
                   <div className="grid gap-2 pb-2 sm:grid-cols-2">
-                    <DateField
-                      value={draftDate}
-                      onChange={setDraftDate}
-                      placeholder="Ngày nhận (dd-mm-yyyy)"
-                      aria-label="Ngày nhận"
-                      className="[&_.input]:h-9 [&_.input]:text-sm"
-                    />
+                    <div>
+                      <span className="mb-1 block text-xs text-muted">Ngày nhận</span>
+                      <DateField
+                        value={draftDate}
+                        onChange={setDraftDate}
+                        placeholder="Ngày nhận (dd-mm-yyyy)"
+                        aria-label="Ngày nhận"
+                        className="[&_.input]:h-9 [&_.input]:text-sm"
+                      />
+                    </div>
+                    <div>
+                      <span className="mb-1 block text-xs text-muted">Ngày tính doanh thu</span>
+                      <DateField
+                        value={draftCreatedDate}
+                        onChange={setDraftCreatedDate}
+                        placeholder="Ngày tính doanh thu"
+                        aria-label="Ngày tính doanh thu"
+                        className="[&_.input]:h-9 [&_.input]:text-sm"
+                      />
+                    </div>
                     <input
                       type="text"
                       value={draftCustomer}
