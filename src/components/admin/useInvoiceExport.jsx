@@ -66,8 +66,23 @@ export function useInvoiceExport() {
   };
 
   const element = (
-    <div aria-hidden="true" className="pointer-events-none fixed left-[-10000px] top-0 w-[720px]">
-      <InvoicePrint ref={ref} order={order} />
+    <div
+      aria-hidden="true"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: 0,
+        height: 0,
+        overflow: 'hidden',
+        pointerEvents: 'none',
+        zIndex: -9999,
+        opacity: 0,
+      }}
+    >
+      <div style={{ width: 720 }}>
+        <InvoicePrint ref={ref} order={order} />
+      </div>
     </div>
   );
 

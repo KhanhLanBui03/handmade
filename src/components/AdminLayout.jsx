@@ -132,7 +132,7 @@ export default function AdminLayout() {
   if (!session) return <Navigate to="/admin/login" replace />;
 
   return (
-    <div className="min-h-dvh bg-paper">
+    <div className="min-h-dvh bg-paper overflow-x-hidden">
       {/* Sidebar desktop */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-line bg-surface lg:block">
         <Sidebar session={session} />
@@ -165,8 +165,8 @@ export default function AdminLayout() {
         </div>
       )}
 
-      <main className="lg:pl-64">
-        <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+      <main className="lg:pl-64 overflow-x-hidden">
+        <div className="mx-auto max-w-6xl px-3 py-4 sm:px-6 sm:py-6 lg:px-10 lg:py-10">
           <Outlet context={{ session }} />
         </div>
       </main>

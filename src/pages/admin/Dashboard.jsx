@@ -162,19 +162,23 @@ export default function Dashboard() {
 
   return (
     <div>
-      <PageHeader title="Bán hàng" description="Chọn sản phẩm và số lượng, sau đó lưu hóa đơn." />
+      <div className="mb-3 sm:mb-6">
+        <h1 className="text-xl sm:text-3xl font-semibold tracking-tight">Bán hàng</h1>
+        <p className="text-xs sm:text-sm text-muted">Chọn sản phẩm và số lượng, sau đó lưu hóa đơn.</p>
+      </div>
 
-      <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard icon={CurrencyCircleDollar} label="Doanh thu hôm nay" value={formatVND(today.revenue)} tone="brick" />
+      <div className="mb-4 sm:mb-8 grid grid-cols-2 gap-2 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
+        <StatCard compact icon={CurrencyCircleDollar} label="Doanh thu hôm nay" value={formatVND(today.revenue)} tone="brick" />
         <StatCard
+          compact
           icon={TrendUp}
           label="Thu nhập hôm nay"
           value={formatVND(today.profit || 0)}
           tone="sage"
           hint={`Lợi nhuận (vốn: ${formatVND(today.cost || 0)})`}
         />
-        <StatCard icon={Receipt} label="Hóa đơn hôm nay" value={today.count} tone="sun" />
-        <StatCard icon={Package} label="Sản phẩm đang bán" value={products.length} />
+        <StatCard compact icon={Receipt} label="Hóa đơn hôm nay" value={today.count} tone="sun" />
+        <StatCard compact icon={Package} label="Sản phẩm đang bán" value={products.length} />
       </div>
 
       {loading ? (
@@ -206,21 +210,21 @@ export default function Dashboard() {
                   const q = orderItems[s.key] || 0;
                   const price = s.price;
                   return (
-                    <li key={p.id} className={`flex items-center gap-3 px-4 py-3 transition-colors ${q > 0 ? 'bg-blush/40' : ''}`}>
-                      <Thumb src={s.image} />
+                    <li key={p.id} className={`flex items-center gap-2 sm:gap-3 px-3 py-2.5 sm:px-4 sm:py-3 transition-colors ${q > 0 ? 'bg-blush/40' : ''}`}>
+                      <Thumb src={s.image} className="size-11 sm:size-12 shrink-0" />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate font-medium">{p.name}</p>
-                        <p className="text-sm text-muted">{formatVND(price)}</p>
+                        <p className="truncate text-sm sm:text-base font-medium">{p.name}</p>
+                        <p className="text-xs sm:text-sm text-muted">{formatVND(price)}</p>
                       </div>
-                      <div className="flex items-center rounded-full border border-line bg-surface">
+                      <div className="flex shrink-0 items-center rounded-full border border-line bg-surface">
                         <button
                           type="button"
                           onClick={() => setQty(p.id, q - 1)}
                           disabled={q === 0}
                           aria-label={`Giảm số lượng ${p.name}`}
-                          className="flex size-9 items-center justify-center rounded-full text-muted hover:text-ink disabled:opacity-30"
+                          className="flex size-8 sm:size-9 items-center justify-center rounded-full text-muted hover:text-ink disabled:opacity-30"
                         >
-                          <Minus size={14} weight="bold" />
+                          <Minus size={13} weight="bold" />
                         </button>
                         <input
                           type="number"
@@ -230,15 +234,15 @@ export default function Dashboard() {
                           placeholder="0"
                           onChange={(e) => setQty(p.id, e.target.value)}
                           aria-label={`Số lượng ${p.name}`}
-                          className="w-10 bg-transparent text-center font-semibold outline-none"
+                          className="w-8 sm:w-10 bg-transparent text-center text-sm font-semibold outline-none"
                         />
                         <button
                           type="button"
                           onClick={() => setQty(p.id, q + 1)}
                           aria-label={`Tăng số lượng ${p.name}`}
-                          className="flex size-9 items-center justify-center rounded-full bg-ink text-paper hover:bg-ink/85"
+                          className="flex size-8 sm:size-9 items-center justify-center rounded-full bg-ink text-paper hover:bg-ink/85"
                         >
-                          <Plus size={14} weight="bold" />
+                          <Plus size={13} weight="bold" />
                         </button>
                       </div>
                     </li>
@@ -249,7 +253,7 @@ export default function Dashboard() {
           </section>
 
           {/* Hóa đơn tạm */}
-          <aside className="card flex flex-col lg:sticky lg:top-6 lg:col-span-5 xl:col-span-4" aria-label="Hóa đơn hiện tại">
+          <aside id="current-invoice" className="card flex flex-col lg:sticky lg:top-6 lg:col-span-5 xl:col-span-4" aria-label="Hóa đơn hiện tại">
             <div className="flex items-center justify-between border-b border-line px-5 py-4">
               <h2 className="font-semibold">Hóa đơn hiện tại</h2>
               {cart.length > 0 && (
@@ -474,6 +478,25 @@ export default function Dashboard() {
         >
           {toast.type === 'success' ? <CheckCircle size={20} weight="fill" className="text-[#9fd08a]" /> : <WarningCircle size={20} weight="fill" />}
           {toast.text}
+        </div>
+      )}
+
+      {/* Thanh hóa đơn nổi trên điện thoại khi đã chọn món */}
+      {itemCount > 0 && (
+        <div className="fixed inset-x-0 bottom-0 z-40 flex items-center justify-between border-t border-line bg-surface/95 px-4 py-2.5 shadow-2xl backdrop-blur lg:hidden">
+          <div>
+            <p className="text-xs text-muted">{itemCount} món đã chọn</p>
+            <p className="text-base font-bold text-brick">{formatVND(total)}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              document.getElementById('current-invoice')?.scrollIntoView({ behavior: 'smooth' });
+            }}
+            className="btn btn-accent btn-sm rounded-xl px-4"
+          >
+            Xem hóa đơn & Lưu →
+          </button>
         </div>
       )}
 
