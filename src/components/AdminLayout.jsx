@@ -165,8 +165,8 @@ export default function AdminLayout() {
         </div>
       )}
 
-      <main className="lg:pl-64 overflow-x-hidden">
-        <div className="mx-auto max-w-6xl px-3 py-4 sm:px-6 sm:py-6 lg:px-10 lg:py-10">
+      <main className="min-w-0 lg:pl-64 overflow-x-hidden">
+        <div className="mx-auto max-w-6xl px-3 py-4 sm:px-6 sm:py-6 lg:px-10 lg:py-10 min-w-0">
           <Outlet context={{ session }} />
         </div>
       </main>

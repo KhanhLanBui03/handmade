@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { startOfDay, endOfDay, format, parseISO } from 'date-fns';
 import {
   CheckCircle, CircleNotch, Minus, Plus, MagnifyingGlass, Trash, ShoppingBagOpen,
-  CurrencyCircleDollar, Receipt, Package, WarningCircle, ShareNetwork, Printer, TrendUp,
+  CurrencyCircleDollar, Receipt, Package, WarningCircle, ShareNetwork, Printer, TrendUp, X,
 } from '@phosphor-icons/react';
 import { supabase } from '../../lib/supabase';
 import { insertOrder, loadFeeNames } from '../../lib/saveOrder';
@@ -45,6 +45,7 @@ export default function Dashboard() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null); // { type, text }
   const [search, setSearch] = useState('');
+  const [selectedCat, setSelectedCat] = useState('all');
   const [today, setToday] = useState({ count: 0, revenue: 0, profit: 0, cost: 0 });
   const [customerName, setCustomerName] = useState('');
   const [orderNote, setOrderNote] = useState('');
@@ -66,7 +67,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     async function fetchData() {
-      const { data } = await supabase.from('products').select('*').order('name');
+      const { data } = await supabase.from('products').select('*, categories(name)').order('name');
       if (data) {
         setProducts(data);
         loadTodayStats(data).then(setToday);
@@ -104,12 +105,23 @@ export default function Dashboard() {
   const total = subtotal + ship + other; // tổng khách trả = tiền hàng + ship + phí khác
   const itemCount = cart.reduce((s, i) => s + i.quantity, 0);
 
+  const categories = useMemo(() => {
+    const list = [...new Set(products.map((p) => p.categories?.name).filter(Boolean))];
+    return list.sort((a, b) => a.localeCompare(b, 'vi'));
+  }, [products]);
+
   const visible = useMemo(() => {
     const q = normalize(search.trim());
-    // Mỗi phân loại là một dòng riêng (giá riêng)
-    const all = products.flatMap(sellablesOf);
-    return q ? all.filter((s) => normalize(s.label).includes(q)) : all;
-  }, [products, search]);
+    const all = products.flatMap((p) => {
+      const items = sellablesOf(p);
+      return items.map((it) => ({ ...it, categoryName: p.categories?.name || '' }));
+    });
+    return all.filter((s) => {
+      if (selectedCat !== 'all' && s.categoryName !== selectedCat) return false;
+      if (!q) return true;
+      return normalize(s.label).includes(q) || normalize(s.categoryName).includes(q);
+    });
+  }, [products, search, selectedCat]);
 
   const showToast = (type, text) => {
     setToast({ type, text });
@@ -161,7 +173,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div>
+    <div className="min-w-0">
       <div className="mb-3 sm:mb-6">
         <h1 className="text-xl sm:text-3xl font-semibold tracking-tight">Bán hàng</h1>
         <p className="text-xs sm:text-sm text-muted">Chọn sản phẩm và số lượng, sau đó lưu hóa đơn.</p>
@@ -184,25 +196,86 @@ export default function Dashboard() {
       {loading ? (
         <Spinner />
       ) : (
-        <div className="grid items-start gap-6 lg:grid-cols-12">
+        <div className="grid min-w-0 items-start gap-6 lg:grid-cols-12">
           {/* Danh sách sản phẩm */}
-          <section className="card lg:col-span-7 xl:col-span-8" aria-label="Sản phẩm">
-            <div className="border-b border-line p-4">
+          <section className="card min-w-0 overflow-hidden lg:col-span-7 xl:col-span-8" aria-label="Sản phẩm">
+            <div className="sticky top-0 z-10 border-b border-line bg-surface/95 p-3 sm:p-4 backdrop-blur">
               <div className="relative">
                 <MagnifyingGlass size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
                 <input
-                  type="search"
+                  type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Tìm sản phẩm…"
+                  placeholder="Tìm theo tên sản phẩm, phân loại..."
                   aria-label="Tìm sản phẩm"
-                  className="input pl-10"
+                  className="input h-10 pl-10 pr-9 text-sm"
                 />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted hover:bg-paper-dim hover:text-ink"
+                    aria-label="Xóa tìm kiếm"
+                  >
+                    <X size={16} weight="bold" />
+                  </button>
+                )}
               </div>
+
+              {categories.length > 0 && (
+                <div className="no-scrollbar mt-2.5 flex items-center gap-1.5 overflow-x-auto pb-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCat('all')}
+                    className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                      selectedCat === 'all'
+                        ? 'bg-ink text-paper'
+                        : 'bg-paper-dim text-muted hover:text-ink'
+                    }`}
+                  >
+                    Tất cả ({products.length})
+                  </button>
+                  {categories.map((c) => {
+                    const count = products.filter((p) => p.categories?.name === c).length;
+                    return (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setSelectedCat(c)}
+                        className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                          selectedCat === c
+                            ? 'bg-brick text-white'
+                            : 'bg-paper-dim text-muted hover:text-ink'
+                        }`}
+                      >
+                        {c} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {visible.length === 0 ? (
-              <EmptyState icon={Package} title="Không có sản phẩm phù hợp" />
+              <EmptyState
+                icon={Package}
+                title="Không có sản phẩm phù hợp"
+                text="Thử tìm từ khóa khác hoặc bấm Tất cả để xem lại."
+                action={
+                  (search || selectedCat !== 'all') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearch('');
+                        setSelectedCat('all');
+                      }}
+                      className="btn btn-outline btn-sm mt-3"
+                    >
+                      Xem tất cả sản phẩm
+                    </button>
+                  )
+                }
+              />
             ) : (
               <ul className="divide-y divide-line">
                 {visible.map((s) => {
@@ -211,20 +284,20 @@ export default function Dashboard() {
                   const price = s.price;
                   return (
                     <li key={p.id} className={`flex items-center gap-2 sm:gap-3 px-3 py-2.5 sm:px-4 sm:py-3 transition-colors ${q > 0 ? 'bg-blush/40' : ''}`}>
-                      <Thumb src={s.image} className="size-11 sm:size-12 shrink-0" />
+                      <Thumb src={s.image} className="size-10 sm:size-12 shrink-0" />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm sm:text-base font-medium">{p.name}</p>
                         <p className="text-xs sm:text-sm text-muted">{formatVND(price)}</p>
                       </div>
-                      <div className="flex shrink-0 items-center rounded-full border border-line bg-surface">
+                      <div className="flex shrink-0 items-center rounded-full border border-line bg-surface p-0.5">
                         <button
                           type="button"
                           onClick={() => setQty(p.id, q - 1)}
                           disabled={q === 0}
                           aria-label={`Giảm số lượng ${p.name}`}
-                          className="flex size-8 sm:size-9 items-center justify-center rounded-full text-muted hover:text-ink disabled:opacity-30"
+                          className="flex size-7 items-center justify-center rounded-full text-muted hover:text-ink disabled:opacity-30 sm:size-8"
                         >
-                          <Minus size={13} weight="bold" />
+                          <Minus size={12} weight="bold" />
                         </button>
                         <input
                           type="number"
@@ -234,15 +307,15 @@ export default function Dashboard() {
                           placeholder="0"
                           onChange={(e) => setQty(p.id, e.target.value)}
                           aria-label={`Số lượng ${p.name}`}
-                          className="w-8 sm:w-10 bg-transparent text-center text-sm font-semibold outline-none"
+                          className="w-7 bg-transparent text-center text-xs font-semibold outline-none sm:w-8 sm:text-sm"
                         />
                         <button
                           type="button"
                           onClick={() => setQty(p.id, q + 1)}
                           aria-label={`Tăng số lượng ${p.name}`}
-                          className="flex size-8 sm:size-9 items-center justify-center rounded-full bg-ink text-paper hover:bg-ink/85"
+                          className="flex size-7 items-center justify-center rounded-full bg-ink text-paper hover:bg-ink/85 sm:size-8"
                         >
-                          <Plus size={13} weight="bold" />
+                          <Plus size={12} weight="bold" />
                         </button>
                       </div>
                     </li>
@@ -253,7 +326,7 @@ export default function Dashboard() {
           </section>
 
           {/* Hóa đơn tạm */}
-          <aside id="current-invoice" className="card flex flex-col lg:sticky lg:top-6 lg:col-span-5 xl:col-span-4" aria-label="Hóa đơn hiện tại">
+          <aside id="current-invoice" className="card min-w-0 flex flex-col lg:sticky lg:top-6 lg:col-span-5 xl:col-span-4" aria-label="Hóa đơn hiện tại">
             <div className="flex items-center justify-between border-b border-line px-5 py-4">
               <h2 className="font-semibold">Hóa đơn hiện tại</h2>
               {cart.length > 0 && (
