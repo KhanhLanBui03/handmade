@@ -41,6 +41,7 @@ async function loadTodayStats(productsList = []) {
 export default function Dashboard() {
   const [products, setProducts] = useState([]);
   const [orderItems, setOrderItems] = useState({}); // { product_id: quantity }
+  const [customPrices, setCustomPrices] = useState({}); // { [itemKey]: numericPrice } để tự sửa giá từng món
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null); // { type, text }
@@ -96,8 +97,11 @@ export default function Dashboard() {
       products
         .flatMap(sellablesOf)
         .filter((s) => orderItems[s.key] > 0)
-        .map((s) => ({ ...s, quantity: orderItems[s.key] })),
-    [products, orderItems],
+        .map((s) => {
+          const unitPrice = customPrices[s.key] !== undefined ? customPrices[s.key] : s.price;
+          return { ...s, quantity: orderItems[s.key], price: unitPrice, defaultPrice: s.price };
+        }),
+    [products, orderItems, customPrices],
   );
   const subtotal = cart.reduce((s, i) => s + i.quantity * i.price, 0);
   const ship = Number(String(shippingFee).replace(/[^\d]/g, '')) || 0;
@@ -130,6 +134,16 @@ export default function Dashboard() {
 
   const handleSaveOrder = async () => {
     if (subtotal <= 0) return;
+    if (!customerName.trim()) {
+      showToast('error', 'Vui lòng nhập tên khách hàng.');
+      document.getElementById('customer-name')?.focus();
+      return;
+    }
+    if (!receiveDate) {
+      showToast('error', 'Vui lòng chọn ngày nhận hàng.');
+      document.getElementById('receive-date')?.focus();
+      return;
+    }
     setSaving(true);
     const items = cart.map((i) => ({
       product_id: i.product.id,
@@ -159,6 +173,7 @@ export default function Dashboard() {
     } else {
       showToast('success', movedToNote ? `Đã lưu hóa đơn (một số thông tin ghi trong ghi chú)` : `Đã lưu hóa đơn ${formatVND(total)}`);
       setOrderItems({});
+      setCustomPrices({});
       setLastOrder(saved);
       setCustomerName('');
       setOrderNote('');
@@ -330,7 +345,14 @@ export default function Dashboard() {
             <div className="flex items-center justify-between border-b border-line px-5 py-4">
               <h2 className="font-semibold">Hóa đơn hiện tại</h2>
               {cart.length > 0 && (
-                <button type="button" onClick={() => setOrderItems({})} className="inline-flex items-center gap-1 text-sm text-muted hover:text-brick">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOrderItems({});
+                    setCustomPrices({});
+                  }}
+                  className="inline-flex items-center gap-1 text-sm text-muted hover:text-brick"
+                >
                   <Trash size={16} /> Xóa hết
                 </button>
               )}
@@ -371,11 +393,44 @@ export default function Dashboard() {
               <ul className="max-h-[50vh] divide-y divide-line overflow-y-auto px-5">
                 {cart.map((i) => (
                   <li key={i.key} className="flex items-start justify-between gap-3 py-3 text-sm">
-                    <div className="min-w-0">
-                      <p className="font-medium">{i.label}</p>
-                      <p className="text-muted">{i.quantity} × {formatVND(i.price)}</p>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium truncate">{i.label}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">
+                        <span>{i.quantity} ×</span>
+                        <div className="inline-flex items-center rounded-lg border border-line bg-surface px-2 py-0.5 focus-within:border-ink">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={i.price !== undefined ? i.price.toLocaleString('vi-VN') : ''}
+                            onChange={(e) => {
+                              const val = Number(e.target.value.replace(/[^\d]/g, '')) || 0;
+                              setCustomPrices((prev) => ({ ...prev, [i.key]: val }));
+                            }}
+                            className="w-20 bg-transparent text-right font-semibold text-ink outline-none"
+                            title="Sửa đơn giá món này"
+                            placeholder="0"
+                          />
+                          <span className="ml-1 text-[11px] text-muted">đ</span>
+                        </div>
+                        {customPrices[i.key] !== undefined && customPrices[i.key] !== i.defaultPrice && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCustomPrices((prev) => {
+                                const next = { ...prev };
+                                delete next[i.key];
+                                return next;
+                              });
+                            }}
+                            className="text-[11px] text-muted underline hover:text-brick"
+                            title={`Khôi phục giá gốc: ${formatVND(i.defaultPrice)}`}
+                          >
+                            Giá gốc
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <p className="shrink-0 font-semibold">{formatVND(i.quantity * i.price)}</p>
+                    <p className="shrink-0 font-semibold pt-0.5">{formatVND(i.quantity * i.price)}</p>
                   </li>
                 ))}
               </ul>
@@ -384,9 +439,9 @@ export default function Dashboard() {
             <div className="space-y-3 border-t border-line px-5 py-4">
               <div>
                 <label htmlFor="receive-date" className="label">
-                  Ngày nhận <span className="font-normal text-muted">(không bắt buộc)</span>
+                  Ngày nhận <span className="text-brick">*</span>
                 </label>
-                <DateField id="receive-date" value={receiveDate} onChange={handleReceiveDateChange} />
+                <DateField id="receive-date" value={receiveDate} onChange={handleReceiveDateChange} required />
                 {receiveDate && (
                   <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs text-muted">
                     <input
@@ -404,11 +459,12 @@ export default function Dashboard() {
               </div>
               <div>
                 <label htmlFor="customer-name" className="label">
-                  Tên khách <span className="font-normal text-muted">(không bắt buộc)</span>
+                  Tên khách <span className="text-brick">*</span>
                 </label>
                 <input
                   id="customer-name"
                   type="text"
+                  required
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
                   placeholder="VD: Chị Lan"

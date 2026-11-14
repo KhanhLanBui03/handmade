@@ -16,6 +16,7 @@ import {
   CircleNotch,
   ShoppingBag,
   DownloadSimple,
+  ShareNetwork,
   CheckCircle,
   PencilSimple,
   Plus,
@@ -50,6 +51,11 @@ const isMissingTable = (error) =>
 
 // Số Zalo: 0901234567 -> https://zalo.me/0901234567
 const zaloLink = (phone) => `https://zalo.me/${String(phone).replace(/[^\d]/g, '')}`;
+const hasRealPhone = (phone) => {
+  if (!phone) return false;
+  const digits = String(phone).replace(/[^\d]/g, '');
+  return digits.length >= 8 && !/^0+$/.test(digits);
+};
 
 export default function OnlineOrders() {
   const [orders, setOrders] = useState([]);
@@ -168,7 +174,19 @@ export default function OnlineOrders() {
     orders.forEach((o) => (c[o.status] = (c[o.status] || 0) + 1));
     return c;
   }, [orders]);
-  const visible = tab === 'all' ? orders : orders.filter((o) => o.status === tab);
+  const visible = useMemo(() => {
+    const list = tab === 'all' ? orders : orders.filter((o) => o.status === tab);
+    if (tab === 'confirmed') {
+      // Chờ giao hàng: sắp xếp theo ngày nhận tăng dần (đơn cần giao sớm nhất hiện lên trước)
+      return [...list].sort((a, b) => {
+        const da = a.receive_date || '9999-12-31';
+        const db = b.receive_date || '9999-12-31';
+        if (da !== db) return da.localeCompare(db);
+        return (a.created_at || '').localeCompare(b.created_at || '');
+      });
+    }
+    return list;
+  }, [orders, tab]);
 
   const replace = (row) => setOrders((list) => list.map((o) => (o.id === row.id ? row : o)));
 
@@ -184,7 +202,7 @@ export default function OnlineOrders() {
   const toInvoice = (order) => {
     const noteParts = [
       order.delivery_method === 'ship' && order.address ? `Giao: ${order.address}` : 'Nhận hàng: Khách tự đến lấy',
-      `SĐT: ${order.phone}`,
+      hasRealPhone(order.phone) ? `SĐT: ${order.phone}` : null,
       order.note ? `Ghi chú: ${order.note}` : null,
     ].filter(Boolean);
     const ship = Number(order.shipping_fee) || 0;
@@ -227,8 +245,10 @@ export default function OnlineOrders() {
     }
     replace(data);
   };
-  // Tải (hoặc tải lại) ảnh phiếu mua hàng: máy tính tải file ảnh về, điện thoại mở bảng chia sẻ (Zalo...)
-  const downloadSlip = (order) => invoice.sendImage({ ...toInvoice(order), id: order.id, created_at: order.created_at });
+  // Tải ảnh phiếu mua hàng về máy tính / điện thoại
+  const downloadSlip = (order) => invoice.download({ ...toInvoice(order), id: order.id, created_at: order.created_at });
+  // Mở chia sẻ ảnh phiếu mua hàng (Zalo, Messenger...)
+  const shareSlip = (order) => invoice.share({ ...toInvoice(order), id: order.id, created_at: order.created_at });
 
   // Đang giao → "Hoàn thành đơn": lúc này mới tạo hóa đơn → tính vào doanh thu & thu nhập
   const completeOrder = async (order) => {
@@ -289,7 +309,7 @@ export default function OnlineOrders() {
         </div>
       )}
 
-      <div className="no-scrollbar mb-5 flex gap-2 overflow-x-auto">
+      <div className="no-scrollbar mb-4 flex gap-2 overflow-x-auto">
         {TABS.map((t) => (
           <button
             key={t.v}
@@ -308,6 +328,13 @@ export default function OnlineOrders() {
           </button>
         ))}
       </div>
+
+      {tab === 'confirmed' && counts.confirmed > 0 && (
+        <p className="mb-4 flex items-center gap-1.5 text-xs text-muted">
+          <CalendarBlank size={14} className="shrink-0 text-brick" />
+          <span>Tự động sắp xếp theo ngày nhận hàng (đơn cần giao sớm nhất hiển thị lên đầu).</span>
+        </p>
+      )}
 
       {loading ? (
         <div className="card"><Spinner /></div>
@@ -331,6 +358,11 @@ export default function OnlineOrders() {
                   <div className="flex items-center gap-2">
                     <span className="badge bg-surface font-mono font-semibold text-ink ring-1 ring-line">#{shortId(o.id)}</span>
                     <span className={`badge ${st.cls}`}>{st.label}</span>
+                    {o.status === 'confirmed' && o.receive_date && (
+                      <span className="badge bg-blush text-brick font-semibold">
+                        <CalendarBlank size={13} weight="fill" /> Giao: {format(parseISO(o.receive_date), 'dd/MM/yyyy')}
+                      </span>
+                    )}
                   </div>
                   <span className="text-xs text-muted">Đặt lúc {format(parseISO(o.created_at), 'HH:mm dd-MM-yyyy')}</span>
                 </div>
@@ -339,14 +371,18 @@ export default function OnlineOrders() {
                   {/* Khách hàng */}
                   <div className="space-y-2 text-sm">
                     <p className="text-base font-semibold">{o.customer_name}</p>
-                    <div className="flex flex-wrap gap-2">
-                      <a href={`tel:${o.phone}`} className="btn btn-outline btn-sm">
-                        <Phone size={16} /> {o.phone}
-                      </a>
-                      <a href={zaloLink(o.phone)} target="_blank" rel="noreferrer" className="btn btn-outline btn-sm">
-                        <ChatCircleDots size={16} /> Zalo
-                      </a>
-                    </div>
+                    {hasRealPhone(o.phone) ? (
+                      <div className="flex flex-wrap gap-2">
+                        <a href={`tel:${o.phone}`} className="btn btn-outline btn-sm">
+                          <Phone size={16} /> {o.phone}
+                        </a>
+                        <a href={zaloLink(o.phone)} target="_blank" rel="noreferrer" className="btn btn-outline btn-sm">
+                          <ChatCircleDots size={16} /> Zalo
+                        </a>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted italic">Khách không để lại SĐT (tự đến lấy)</p>
+                    )}
                     <p className="flex items-start gap-2 text-muted">
                       {o.delivery_method === 'pickup' ? (
                         <><Storefront size={18} className="mt-px shrink-0" /> Khách tự đến lấy</>
@@ -586,8 +622,11 @@ export default function OnlineOrders() {
                           <button type="button" disabled={busy} onClick={() => startEdit(o)} className="btn btn-outline btn-sm">
                             <PencilSimple size={16} /> Sửa
                           </button>
-                          <button type="button" disabled={busy || invoice.busy} onClick={() => downloadSlip(o)} className="btn btn-outline btn-sm">
-                            <DownloadSimple size={16} /> Tải ảnh phiếu mua hàng
+                          <button type="button" disabled={busy || invoice.busy} onClick={() => downloadSlip(o)} className="btn btn-outline btn-sm" title="Tải file ảnh phiếu về máy">
+                            <DownloadSimple size={16} /> Tải về máy
+                          </button>
+                          <button type="button" disabled={busy || invoice.busy} onClick={() => shareSlip(o)} className="btn btn-outline btn-sm" title="Gửi ảnh qua Zalo / Messenger">
+                            <ShareNetwork size={16} /> Gửi khách (Zalo)
                           </button>
                           <button type="button" disabled={busy} onClick={() => completeOrder(o)} className="btn btn-accent btn-sm">
                             <CheckCircle size={16} weight="bold" /> Hoàn thành đơn

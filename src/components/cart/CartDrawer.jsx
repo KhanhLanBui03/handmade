@@ -191,7 +191,9 @@ function CheckoutStep({ onDone }) {
 
   const phoneClean = phone.replace(/[^\d+]/g, '');
   const phoneOk = /^\+?\d{9,12}$/.test(phoneClean);
-  const valid = name.trim() && phoneOk && (method === 'pickup' || address.trim()) && Boolean(receiveDate) && items.length > 0;
+  const isPickup = method === 'pickup';
+  const phoneValid = isPickup ? (!phoneClean || phoneOk) : phoneOk;
+  const valid = name.trim() && phoneValid && (isPickup || address.trim()) && Boolean(receiveDate) && items.length > 0;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -200,19 +202,24 @@ function CheckoutStep({ onDone }) {
     setError('');
 
     const id = crypto.randomUUID();
-    const { error: err } = await supabase.from('customer_orders').insert([
-      {
-        id,
-        customer_name: name.trim(),
-        phone: phoneClean,
-        delivery_method: method,
-        address: method === 'ship' ? address.trim() : null,
-        receive_date: receiveDate || null,
-        note: note.trim() || null,
-        items: items.map((i) => ({ product_id: i.product_id ?? i.id, product_name: i.name, variant: i.variant || null, quantity: i.quantity, price: i.price })),
-        total_amount: total,
-      },
-    ]);
+    const orderData = {
+      id,
+      customer_name: name.trim(),
+      phone: phoneClean || null,
+      delivery_method: method,
+      address: method === 'ship' ? address.trim() : null,
+      receive_date: receiveDate || null,
+      note: note.trim() || null,
+      items: items.map((i) => ({ product_id: i.product_id ?? i.id, product_name: i.name, variant: i.variant || null, quantity: i.quantity, price: i.price })),
+      total_amount: total,
+    };
+
+    let { error: err } = await supabase.from('customer_orders').insert([orderData]);
+    // Nếu bảng DB còn ràng buộc phone NOT NULL cũ và khách không nhập SĐT -> thử lại với '0000000000'
+    if (err && !orderData.phone) {
+      const retry = await supabase.from('customer_orders').insert([{ ...orderData, phone: '0000000000' }]);
+      err = retry.error;
+    }
     setSending(false);
 
     if (err) {
@@ -239,7 +246,7 @@ function CheckoutStep({ onDone }) {
         </div>
         <div>
           <label htmlFor="co-phone" className="label">
-            Số điện thoại / Zalo <span className="text-brick">*</span>
+            Số điện thoại / Zalo {isPickup ? <span className="font-normal text-muted">(không bắt buộc)</span> : <span className="text-brick">*</span>}
           </label>
           <input
             id="co-phone"
@@ -247,10 +254,10 @@ function CheckoutStep({ onDone }) {
             inputMode="tel"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            required
+            required={!isPickup}
             autoComplete="tel"
             className={`input ${phone && !phoneOk ? 'border-brick' : ''}`}
-            placeholder="VD: 0901 234 567"
+            placeholder={isPickup ? 'Không bắt buộc nếu tự lấy' : 'VD: 0901 234 567'}
             aria-invalid={(phone && !phoneOk) || undefined}
           />
           {phone && !phoneOk && <p className="mt-1 text-xs text-brick">Số điện thoại chưa đúng.</p>}

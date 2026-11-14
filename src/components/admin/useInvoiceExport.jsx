@@ -26,23 +26,48 @@ export function useInvoiceExport() {
     doPrint();
   };
 
-  const sendImage = async (o) => {
+  const generatePng = async (o) => {
+    render(o);
+    const dataUrl = await toPng(ref.current, {
+      pixelRatio: 2,
+      backgroundColor: '#ffffff',
+      skipFonts: true,
+      cacheBust: true,
+    });
+    const name = `hoa-don-${shortId(o.id)}.png`;
+    const blob = await (await fetch(dataUrl)).blob();
+    return { dataUrl, blob, name };
+  };
+
+  const download = async (o) => {
     setBusy(true);
     try {
-      render(o);
-      const dataUrl = await toPng(ref.current, {
-        pixelRatio: 2,
-        backgroundColor: '#ffffff',
-        skipFonts: true,
-        cacheBust: true,
-      });
-      const name = `hoa-don-${shortId(o.id)}.png`;
-      const blob = await (await fetch(dataUrl)).blob();
-      const file = new File([blob], name, { type: 'image/png' });
+      const { blob, name, dataUrl } = await generatePng(o);
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(blobUrl);
+      }, 1000);
+      return 'downloaded';
+    } catch (err) {
+      alert('Không tải được ảnh: ' + (err?.message || err));
+      return 'error';
+    } finally {
+      setBusy(false);
+    }
+  };
 
-      // Điện thoại: mở bảng chia sẻ để gửi thẳng cho khách
-      const isTouch = window.matchMedia?.('(pointer: coarse)').matches;
-      if (isTouch && navigator.canShare?.({ files: [file] })) {
+  const share = async (o) => {
+    setBusy(true);
+    try {
+      const { blob, name, dataUrl } = await generatePng(o);
+      const file = new File([blob], name, { type: 'image/png' });
+      if (navigator.canShare?.({ files: [file] })) {
         try {
           await navigator.share({ files: [file], title: 'Hóa đơn Trạm Hoa Nhỏ' });
           return 'shared';
@@ -50,19 +75,24 @@ export function useInvoiceExport() {
           if (err?.name === 'AbortError') return 'cancelled';
         }
       }
-
-      // Máy tính (hoặc không chia sẻ được): tải ảnh về
+      // Không hỗ trợ Web Share thì tải file về
       const a = document.createElement('a');
       a.href = dataUrl;
       a.download = name;
       a.click();
       return 'downloaded';
     } catch (err) {
-      alert('Không tạo được ảnh hóa đơn: ' + (err?.message || err));
+      alert('Không chia sẻ được ảnh: ' + (err?.message || err));
       return 'error';
     } finally {
       setBusy(false);
     }
+  };
+
+  const sendImage = async (o) => {
+    const isTouch = window.matchMedia?.('(pointer: coarse)').matches;
+    if (isTouch && navigator.canShare) return share(o);
+    return download(o);
   };
 
   const element = (
@@ -86,5 +116,5 @@ export function useInvoiceExport() {
     </div>
   );
 
-  return { print, sendImage, busy, element };
+  return { print, sendImage, download, share, busy, element };
 }
